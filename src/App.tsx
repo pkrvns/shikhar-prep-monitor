@@ -546,20 +546,201 @@ export default function App() {
 
   const DailyView = () => {
     const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-    const today = dayNames[new Date().getDay()];
-    const w = schedule[actW - 1]; const ts = w.days[today] || [];
+    const fullDayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const now = new Date();
+    const today = dayNames[now.getDay()];
+    const w = schedule[actW - 1];
+    const ts = w.days[today] || [];
+
+    const totalHours = ts.reduce((a, t) => a + t.hours, 0);
+    const doneCount = ts.filter(t => progress[t.id]?.status === "done").length;
+    const dayPct = ts.length > 0 ? Math.round((doneCount / ts.length) * 100) : 0;
+    const subjects = [...new Set(ts.map(t => t.subject))];
+    const doneHoursToday = ts.filter(t => progress[t.id]?.status === "done").reduce((a, t) => a + t.hours, 0);
+
+    // Suggested time blocks
+    const timeSlots: { time: string; task: DayTask }[] = [];
+    let hour = 9; // start at 9 AM
+    ts.forEach(t => {
+      const startH = hour;
+      const endH = hour + t.hours;
+      const fmt = (h: number) => h < 12 ? `${h}AM` : h === 12 ? "12PM" : `${h - 12}PM`;
+      timeSlots.push({ time: `${fmt(startH)} - ${fmt(endH)}`, task: t });
+      hour = endH + 0.5; // 30 min break between
+    });
+
+    // Tips based on task type
+    const getTip = (t: DayTask) => {
+      if (t.type === "study") return "Read theory first, then solve NCERT intext questions. Highlight key formulas.";
+      if (t.type === "practice") return "Attempt problems without looking at solutions. Time yourself. Mark doubts.";
+      if (t.type === "test") return "Simulate exam conditions. No phone. Strict time limit. Review mistakes after.";
+      if (t.type === "revision") return "Focus on weak areas from previous weeks. Use flashcards for formulas.";
+      return "Use this time to catch up on pending topics or rest.";
+    };
+
+    // Motivational based on day
+    const dayMsg: Record<string, string> = {
+      Mon: "Fresh start to the week! Physics day — build strong foundations.",
+      Tue: "Keep the momentum going. Practice makes permanent.",
+      Wed: "Midweek focus! Chemistry needs attention to detail.",
+      Thu: "Push through — you're halfway there this week.",
+      Fri: "Maths day! Solve, solve, solve. Speed + accuracy.",
+      Sat: "Weekend grind. Extra practice pays off on exam day.",
+      Sun: "Test day! Treat it like a real exam. Analyze every mistake.",
+    };
+
     return (
       <div className="space-y-4 animate-fade-in-up">
+        {/* Hero Banner */}
         <div className="bg-gradient-to-br from-brand-600 via-brand-700 to-brand-800 rounded-2xl p-5 text-white shadow-xl shadow-brand-600/20 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-8 -mt-8" />
-          <p className="text-[11px] text-white/50 font-medium">{new Date().toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</p>
-          <h2 className="text-lg font-bold mt-1">Today's Plan</h2>
-          <p className="text-[11px] text-white/50 mt-0.5">Week {actW} &middot; {w.label}</p>
+          <div className="absolute bottom-0 left-0 w-20 h-20 bg-white/5 rounded-full -ml-4 -mb-4" />
+          <div className="relative">
+            <p className="text-[11px] text-white/50 font-medium">{now.toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</p>
+            <h2 className="text-xl font-bold mt-1">Today's Plan</h2>
+            <p className="text-[11px] text-white/50 mt-0.5">Week {actW} &middot; {w.label}</p>
+            {ts.length > 0 && (
+              <div className="flex items-center gap-4 mt-3 pt-3 border-t border-white/10">
+                <div>
+                  <p className="text-xl font-black">{totalHours}h</p>
+                  <p className="text-[9px] text-white/40 uppercase tracking-wider">Study Time</p>
+                </div>
+                <div>
+                  <p className="text-xl font-black">{ts.length}</p>
+                  <p className="text-[9px] text-white/40 uppercase tracking-wider">Tasks</p>
+                </div>
+                <div>
+                  <p className="text-xl font-black">{subjects.length}</p>
+                  <p className="text-[9px] text-white/40 uppercase tracking-wider">{subjects.length === 1 ? "Subject" : "Subjects"}</p>
+                </div>
+                <div className="ml-auto">
+                  <div className="relative flex items-center justify-center">
+                    <ProgressRing pct={dayPct} size={44} stroke={4} color="#fff" />
+                    <span className="absolute text-[11px] font-black">{dayPct}%</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
+
         {ts.length === 0 ? (
-          <EmptyState icon="\uD83C\uDF1F" title="No tasks scheduled" subtitle="Enjoy your day off!" />
+          <EmptyState icon={"\uD83C\uDF1F"} title="No tasks scheduled" subtitle="Enjoy your day off!" />
         ) : (
-          <div className="space-y-2">{ts.map((t, i) => <TaskCard key={t.id} task={t} idx={i} />)}</div>
+          <>
+            {/* Motivational Note */}
+            <Card className="p-3.5 bg-amber-50/50 border-amber-100">
+              <div className="flex gap-2.5 items-start">
+                <span className="text-base mt-0.5">{"\uD83D\uDCA1"}</span>
+                <p className="text-[12px] text-gray-700 leading-relaxed">{dayMsg[today] || "Stay focused and consistent!"}</p>
+              </div>
+            </Card>
+
+            {/* Progress Summary */}
+            {doneCount > 0 && (
+              <Card className="p-3.5">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Today's Progress</p>
+                  <span className="text-[11px] font-bold text-gray-600">{doneCount}/{ts.length} tasks &middot; {doneHoursToday}h done</span>
+                </div>
+                <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full transition-all duration-700 ${dayPct === 100 ? "bg-emerald-500" : "bg-brand-500"}`} style={{ width: `${dayPct}%` }} />
+                </div>
+              </Card>
+            )}
+
+            {/* Subject Focus */}
+            <Card className="p-3.5">
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2.5">Today's Focus</p>
+              <div className="flex gap-2">
+                {subjects.map(s => {
+                  const sc = SUBJ[s];
+                  const subTasks = ts.filter(t => t.subject === s);
+                  const subHours = subTasks.reduce((a, t) => a + t.hours, 0);
+                  return (
+                    <div key={s} className={`flex-1 rounded-xl p-2.5 ${sc.light} ${sc.border} border`}>
+                      <Badge className={`bg-gradient-to-r ${sc.gradient} text-white uppercase`}>{sc.icon}</Badge>
+                      <p className="text-[12px] font-semibold text-gray-800 mt-1.5 capitalize">{s}</p>
+                      <p className="text-[10px] text-gray-400">{subHours}h &middot; {subTasks.length} {subTasks.length === 1 ? "task" : "tasks"}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+
+            {/* Timetable */}
+            <Card className="p-4">
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Suggested Timetable</p>
+              <div className="space-y-0">
+                {timeSlots.map(({ time, task }, i) => {
+                  const p_ = progress[task.id];
+                  const isDone = p_?.status === "done";
+                  const sc = SUBJ[task.subject];
+                  return (
+                    <div key={task.id} className="flex gap-3">
+                      {/* Timeline */}
+                      <div className="flex flex-col items-center" style={{ width: 20 }}>
+                        <div className={`w-3 h-3 rounded-full flex-shrink-0 ${isDone ? "bg-emerald-500" : `bg-gradient-to-r ${sc.gradient}`} ring-2 ring-white`} />
+                        {i < timeSlots.length - 1 && <div className={`w-0.5 flex-1 min-h-[40px] ${isDone ? "bg-emerald-200" : "bg-gray-200"}`} />}
+                      </div>
+                      {/* Content */}
+                      <div className={`flex-1 pb-4 ${i < timeSlots.length - 1 ? "" : ""}`}>
+                        <p className={`text-[10px] font-bold uppercase tracking-wider ${isDone ? "text-emerald-500" : sc.text}`}>{time}</p>
+                        <p className={`text-[13px] font-semibold mt-0.5 ${isDone ? "line-through text-gray-400" : "text-gray-800"}`}>{task.topic}</p>
+                        <div className="flex items-center gap-1.5 mt-1">
+                          <Badge className={`bg-gradient-to-r ${sc.gradient} text-white uppercase`}>{sc.icon}</Badge>
+                          <Badge className={TYPE_BADGE[task.type]}>{task.type}</Badge>
+                          <span className="text-[10px] text-gray-400">{task.hours}h</span>
+                        </div>
+                        {isDone && <p className="text-[10px] text-emerald-500 font-semibold mt-1">{"\u2705"} Completed</p>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+
+            {/* Detailed Task Cards */}
+            <div>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1 mb-2.5">Tasks &middot; Mark Progress</p>
+              <div className="space-y-2">{ts.map((t, i) => <TaskCard key={t.id} task={t} idx={i} />)}</div>
+            </div>
+
+            {/* Study Tips */}
+            <Card className="p-4 bg-brand-50/30 border-brand-100">
+              <p className="text-[10px] font-bold text-brand-500 uppercase tracking-widest mb-3">Study Tips for Today</p>
+              <div className="space-y-2.5">
+                {ts.filter((t, i, arr) => arr.findIndex(x => x.type === t.type) === i).map(t => (
+                  <div key={t.type} className="flex gap-2.5 items-start">
+                    <Badge className={TYPE_BADGE[t.type]}>{t.type}</Badge>
+                    <p className="text-[11px] text-gray-600 leading-relaxed flex-1">{getTip(t)}</p>
+                  </div>
+                ))}
+              </div>
+            </Card>
+
+            {/* Quick Actions */}
+            <div className="grid grid-cols-2 gap-2.5">
+              <Card onClick={() => setView("errors")} className="p-3.5">
+                <div className="flex items-start gap-2.5">
+                  <span className="text-base">{"\uD83D\uDCDD"}</span>
+                  <div>
+                    <p className="text-[12px] font-semibold text-gray-800">Log Errors</p>
+                    <p className="text-[10px] text-gray-400 mt-0.5">Track mistakes from today</p>
+                  </div>
+                </div>
+              </Card>
+              <Card onClick={() => setView("revisit")} className="p-3.5">
+                <div className="flex items-start gap-2.5">
+                  <span className="text-base">{"\uD83D\uDD04"}</span>
+                  <div>
+                    <p className="text-[12px] font-semibold text-gray-800">Revisit</p>
+                    <p className="text-[10px] text-gray-400 mt-0.5">Check pending revisions</p>
+                  </div>
+                </div>
+              </Card>
+            </div>
+          </>
         )}
       </div>
     );
