@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from "react";
 type Subject = "physics" | "chemistry" | "maths";
 type Phase = "foundation" | "practice" | "mock";
 type TaskStatus = "pending" | "done" | "skipped";
-type View = "dashboard" | "schedule" | "weekly" | "daily" | "errors" | "revisit" | "monthly" | "adjust";
+type View = "dashboard" | "schedule" | "weekly" | "daily" | "errors" | "revisit" | "monthly" | "adjust" | "analytics";
 
 interface DayTask {
   id: string;
@@ -721,6 +721,278 @@ export default function App() {
     );
   };
 
+  const AnalyticsView = () => {
+    const START = new Date(2026, 3, 6); // Apr 6, 2026
+    const now = new Date();
+    const daysSinceStart = Math.max(0, Math.floor((now.getTime() - START.getTime()) / 86400000));
+    const currentWeekNum = Math.min(28, Math.max(1, Math.ceil(daysSinceStart / 7)));
+    const prepStarted = now >= START;
+    const prepEnded = currentWeekNum >= 28 && daysSinceStart > 196;
+
+    // Tasks that SHOULD be done by now (planned)
+    const plannedWeeks = schedule.filter(w => w.week <= (prepStarted ? currentWeekNum : 0));
+    const plannedTasks = plannedWeeks.flatMap(w => Object.values(w.days).flat());
+    const plannedCount = plannedTasks.length;
+
+    // Tasks actually done
+    const actualDone = plannedTasks.filter(t => progress[t.id]?.status === "done").length;
+    const actualSkipped = plannedTasks.filter(t => progress[t.id]?.status === "skipped").length;
+    const pending = plannedCount - actualDone - actualSkipped;
+    const completionRate = plannedCount > 0 ? Math.round((actualDone / plannedCount) * 100) : 0;
+
+    // Subject-wise gap
+    const subjectGap = (["physics", "chemistry", "maths"] as Subject[]).map(s => {
+      const planned = plannedTasks.filter(t => t.subject === s);
+      const done = planned.filter(t => progress[t.id]?.status === "done").length;
+      const skipped = planned.filter(t => progress[t.id]?.status === "skipped").length;
+      const gap = planned.length - done;
+      const pct = planned.length > 0 ? Math.round((done / planned.length) * 100) : 0;
+      return { subject: s, planned: planned.length, done, skipped, gap, pct };
+    });
+
+    // Task-type gap
+    const typeGap = (["study", "practice", "test", "revision"] as DayTask["type"][]).map(type => {
+      const planned = plannedTasks.filter(t => t.type === type);
+      const done = planned.filter(t => progress[t.id]?.status === "done").length;
+      const gap = planned.length - done;
+      const pct = planned.length > 0 ? Math.round((done / planned.length) * 100) : 0;
+      return { type, planned: planned.length, done, gap, pct };
+    });
+
+    // Weekly trend (last 6 weeks)
+    const trendStart = Math.max(1, (prepStarted ? currentWeekNum : actW) - 5);
+    const trendEnd = prepStarted ? currentWeekNum : actW;
+    const weeklyTrend = [];
+    for (let w = trendStart; w <= trendEnd; w++) {
+      const week = schedule[w - 1];
+      if (!week) continue;
+      const tasks = Object.values(week.days).flat();
+      const done = tasks.filter(t => progress[t.id]?.status === "done").length;
+      const pct = tasks.length > 0 ? Math.round((done / tasks.length) * 100) : 0;
+      weeklyTrend.push({ week: w, done, total: tasks.length, pct });
+    }
+
+    // Missed chapters (study tasks not done)
+    const missedChapters = plannedTasks
+      .filter(t => t.type === "study" && progress[t.id]?.status !== "done" && t.chapter > 0)
+      .map(t => ({ subject: t.subject, chapter: t.chapter, name: t.chapterName, topic: t.topic }));
+    // Deduplicate by chapter name
+    const uniqueMissed = missedChapters.filter((ch, i, arr) => arr.findIndex(c => c.name === ch.name && c.subject === ch.subject) === i);
+
+    // Hours analysis
+    const plannedHours = plannedTasks.reduce((a, t) => a + t.hours, 0);
+    const doneHours = plannedTasks.filter(t => progress[t.id]?.status === "done").reduce((a, t) => a + t.hours, 0);
+    const totalProgramHours = allTasks.reduce((a, t) => a + t.hours, 0);
+
+    // Status label
+    const statusColor = completionRate >= 80 ? "text-emerald-600" : completionRate >= 50 ? "text-amber-600" : "text-red-600";
+    const statusBg = completionRate >= 80 ? "bg-emerald-50" : completionRate >= 50 ? "bg-amber-50" : "bg-red-50";
+    const statusLabel = completionRate >= 90 ? "Excellent" : completionRate >= 75 ? "On Track" : completionRate >= 50 ? "Needs Attention" : completionRate >= 25 ? "Behind Schedule" : prepStarted ? "Critical" : "Not Started";
+
+    // Weakest subject
+    const weakest = [...subjectGap].sort((a, b) => a.pct - b.pct)[0];
+
+    return (
+      <div className="space-y-5 animate-fade-in-up">
+        <SectionTitle>Planned vs Actual</SectionTitle>
+
+        {/* Status Banner */}
+        <div className={`rounded-2xl p-4 border ${statusBg} ${completionRate >= 80 ? "border-emerald-200" : completionRate >= 50 ? "border-amber-200" : "border-red-200"}`}>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Current Status</p>
+              <p className={`text-lg font-black mt-0.5 ${statusColor}`}>{statusLabel}</p>
+              <p className="text-[11px] text-gray-500 mt-1">
+                {prepStarted
+                  ? `You should be at Week ${currentWeekNum} by now`
+                  : `Prep starts Apr 6, 2026 — ${Math.abs(daysSinceStart)} days to go`}
+              </p>
+            </div>
+            <div className="relative flex items-center justify-center">
+              <ProgressRing pct={completionRate} size={64} stroke={6} color={completionRate >= 80 ? "#10b981" : completionRate >= 50 ? "#f59e0b" : "#ef4444"} />
+              <span className={`absolute text-sm font-black ${statusColor}`}>{completionRate}%</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Key Metrics */}
+        <div className="grid grid-cols-2 gap-2.5">
+          <Card className="p-3.5 text-center">
+            <p className="text-2xl font-black text-brand-600">{actualDone}</p>
+            <p className="text-[10px] text-gray-400 font-semibold mt-0.5">Tasks Completed</p>
+            <p className="text-[10px] text-gray-300 mt-0.5">of {plannedCount} planned</p>
+          </Card>
+          <Card className="p-3.5 text-center">
+            <p className={`text-2xl font-black ${pending > 10 ? "text-red-500" : pending > 0 ? "text-amber-500" : "text-emerald-500"}`}>{pending}</p>
+            <p className="text-[10px] text-gray-400 font-semibold mt-0.5">Tasks Pending</p>
+            <p className="text-[10px] text-gray-300 mt-0.5">{actualSkipped} skipped</p>
+          </Card>
+          <Card className="p-3.5 text-center">
+            <p className="text-2xl font-black text-blue-600">{doneHours}h</p>
+            <p className="text-[10px] text-gray-400 font-semibold mt-0.5">Hours Invested</p>
+            <p className="text-[10px] text-gray-300 mt-0.5">of {plannedHours}h planned</p>
+          </Card>
+          <Card className="p-3.5 text-center">
+            <p className="text-2xl font-black text-violet-600">{totalProgramHours - doneHours}h</p>
+            <p className="text-[10px] text-gray-400 font-semibold mt-0.5">Hours Remaining</p>
+            <p className="text-[10px] text-gray-300 mt-0.5">of {totalProgramHours}h total</p>
+          </Card>
+        </div>
+
+        {/* Subject-wise Gap Analysis */}
+        <Card className="p-4">
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Subject Gap Analysis</p>
+          {subjectGap.map(s => {
+            const sc = SUBJ[s.subject];
+            const behindPct = s.planned > 0 ? 100 - s.pct : 0;
+            return (
+              <div key={s.subject} className="mb-4 last:mb-0">
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-2">
+                    <Badge className={`bg-gradient-to-r ${sc.gradient} text-white uppercase`}>{sc.icon}</Badge>
+                    <span className="text-[12px] font-semibold text-gray-700 capitalize">{s.subject}</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[12px] font-bold text-gray-700">{s.done}/{s.planned}</span>
+                    {s.gap > 0 && <span className="text-[10px] text-red-500 font-semibold ml-1.5">{s.gap} behind</span>}
+                  </div>
+                </div>
+                {/* Stacked bar: done (green) + skipped (gray) + gap (red) */}
+                <div className="h-3 bg-gray-100 rounded-full overflow-hidden flex">
+                  {s.done > 0 && <div className="h-full bg-emerald-500 transition-all duration-700" style={{ width: `${s.pct}%` }} />}
+                  {s.skipped > 0 && <div className="h-full bg-gray-300 transition-all duration-700" style={{ width: `${s.planned > 0 ? (s.skipped / s.planned) * 100 : 0}%` }} />}
+                  {behindPct > 0 && s.pct + (s.planned > 0 ? (s.skipped / s.planned) * 100 : 0) < 100 && (
+                    <div className="h-full bg-red-200 transition-all duration-700 flex-1" />
+                  )}
+                </div>
+                <div className="flex gap-3 mt-1">
+                  <span className="text-[9px] text-gray-400 flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />Done {s.pct}%</span>
+                  {s.skipped > 0 && <span className="text-[9px] text-gray-400 flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-gray-300 inline-block" />Skipped {s.skipped}</span>}
+                  {s.gap > 0 && <span className="text-[9px] text-red-400 flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-200 inline-block" />Gap {s.gap}</span>}
+                </div>
+              </div>
+            );
+          })}
+        </Card>
+
+        {/* Task Type Breakdown */}
+        <Card className="p-4">
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">By Task Type</p>
+          <div className="grid grid-cols-2 gap-2.5">
+            {typeGap.map(t => (
+              <div key={t.type} className="bg-gray-50 rounded-xl p-3">
+                <div className="flex items-center justify-between mb-1.5">
+                  <Badge className={TYPE_BADGE[t.type]}>{t.type}</Badge>
+                  <span className="text-[11px] font-bold text-gray-600">{t.pct}%</span>
+                </div>
+                <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full transition-all duration-700 ${t.pct >= 80 ? "bg-emerald-500" : t.pct >= 50 ? "bg-amber-500" : "bg-red-400"}`} style={{ width: `${t.pct}%` }} />
+                </div>
+                <p className="text-[10px] text-gray-400 mt-1">{t.done}/{t.planned} done</p>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        {/* Weekly Trend */}
+        {weeklyTrend.length > 0 && (
+          <Card className="p-4">
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Weekly Completion Trend</p>
+            <div className="flex items-end gap-1.5" style={{ height: 100 }}>
+              {weeklyTrend.map(w => (
+                <div key={w.week} className="flex-1 flex flex-col items-center gap-1">
+                  <span className="text-[9px] font-bold text-gray-500">{w.pct}%</span>
+                  <div className="w-full bg-gray-100 rounded-t-lg flex-1 relative" style={{ minHeight: 8 }}>
+                    <div
+                      className={`absolute bottom-0 left-0 right-0 rounded-t-lg transition-all duration-700 ${w.pct >= 80 ? "bg-emerald-500" : w.pct >= 50 ? "bg-amber-400" : w.pct > 0 ? "bg-red-400" : "bg-gray-200"}`}
+                      style={{ height: `${Math.max(4, w.pct)}%` }}
+                    />
+                  </div>
+                  <span className="text-[9px] text-gray-400 font-medium">W{w.week}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+
+        {/* Missed Chapters */}
+        {uniqueMissed.length > 0 && (
+          <Card className="p-4 border-red-100 bg-red-50/30">
+            <p className="text-[10px] font-bold text-red-400 uppercase tracking-widest mb-3">
+              Missed Chapters ({uniqueMissed.length})
+            </p>
+            <p className="text-[11px] text-gray-500 mb-3">These study chapters were planned but not completed yet:</p>
+            <div className="space-y-2">
+              {uniqueMissed.map((ch, i) => (
+                <div key={`${ch.subject}-${ch.name}-${i}`} className="flex items-center gap-2 bg-white rounded-xl p-2.5 border border-red-100">
+                  <Badge className={`bg-gradient-to-r ${SUBJ[ch.subject].gradient} text-white uppercase`}>{SUBJ[ch.subject].icon}</Badge>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[12px] font-semibold text-gray-800 truncate">Ch.{ch.chapter} {ch.name}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+
+        {/* Recommendations */}
+        <Card className="p-4 bg-brand-50/30 border-brand-100">
+          <p className="text-[10px] font-bold text-brand-500 uppercase tracking-widest mb-3">Recommendations</p>
+          <div className="space-y-2.5">
+            {weakest && weakest.gap > 0 && (
+              <div className="flex gap-2.5 items-start">
+                <span className="text-sm mt-0.5">{"\u26A0\uFE0F"}</span>
+                <p className="text-[12px] text-gray-700 leading-relaxed">
+                  <b className="text-gray-900 capitalize">{weakest.subject}</b> is your weakest subject with {weakest.gap} pending tasks ({weakest.pct}% completion). Prioritize this in your next study sessions.
+                </p>
+              </div>
+            )}
+            {typeGap.find(t => t.type === "test" && t.pct < 60) && (
+              <div className="flex gap-2.5 items-start">
+                <span className="text-sm mt-0.5">{"\uD83D\uDCDD"}</span>
+                <p className="text-[12px] text-gray-700 leading-relaxed">
+                  Weekly tests completion is low. Regular testing is essential for exam readiness &mdash; don't skip test days.
+                </p>
+              </div>
+            )}
+            {uniqueMissed.length > 3 && (
+              <div className="flex gap-2.5 items-start">
+                <span className="text-sm mt-0.5">{"\uD83D\uDCD6"}</span>
+                <p className="text-[12px] text-gray-700 leading-relaxed">
+                  You have {uniqueMissed.length} missed study chapters. Consider using buffer weeks to catch up on the most weighted chapters first.
+                </p>
+              </div>
+            )}
+            {completionRate >= 80 && (
+              <div className="flex gap-2.5 items-start">
+                <span className="text-sm mt-0.5">{"\uD83C\uDF1F"}</span>
+                <p className="text-[12px] text-gray-700 leading-relaxed">
+                  Great progress! Maintain this pace and focus on converting weak-rated topics (Spaced Revisit) into strong ones.
+                </p>
+              </div>
+            )}
+            {!prepStarted && (
+              <div className="flex gap-2.5 items-start">
+                <span className="text-sm mt-0.5">{"\uD83D\uDE80"}</span>
+                <p className="text-[12px] text-gray-700 leading-relaxed">
+                  Preparation hasn't started yet. Use this time to set up your study environment and review Class 11 fundamentals.
+                </p>
+              </div>
+            )}
+            {doneHours > 0 && (
+              <div className="flex gap-2.5 items-start">
+                <span className="text-sm mt-0.5">{"\u23F1\uFE0F"}</span>
+                <p className="text-[12px] text-gray-700 leading-relaxed">
+                  Average pace: <b>{plannedCount > 0 ? (doneHours / Math.max(1, prepStarted ? currentWeekNum : 1)).toFixed(1) : 0}h/week</b>. Target is {(totalProgramHours / 28).toFixed(1)}h/week to finish on time.
+                </p>
+              </div>
+            )}
+          </div>
+        </Card>
+      </div>
+    );
+  };
+
   const AdjustView = () => {
     const [markWeek, setMarkWeek] = useState(actW);
     const [confirmReset, setConfirmReset] = useState(false);
@@ -773,6 +1045,7 @@ export default function App() {
     { v: "weekly", label: "Week", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> },
     { v: "daily", label: "Today", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> },
     { v: "monthly", label: "Monthly", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg> },
+    { v: "analytics", label: "Analytics", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> },
     { v: "errors", label: "Errors", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> },
     { v: "revisit", label: "Revisit", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg> },
     { v: "adjust", label: "Adjust", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> },
@@ -810,6 +1083,7 @@ export default function App() {
         {view === "errors" && <ErrorsView />}
         {view === "revisit" && <RevisitView />}
         {view === "monthly" && <MonthlyView />}
+        {view === "analytics" && <AnalyticsView />}
         {view === "adjust" && <AdjustView />}
       </div>
 
