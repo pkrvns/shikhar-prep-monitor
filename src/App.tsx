@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
+import { SYLLABUS_LINKS, SAMPLE_PAPERS, PYQ_LINKS, GENERAL_RESOURCES, FORMULAS, PYQ_PRIORITIES, TEST_PAPERS, TAG_COLORS, type LinkSection } from "./data";
 
 type Subject = "physics" | "chemistry" | "maths";
 type Phase = "foundation" | "practice" | "mock";
 type TaskStatus = "pending" | "done" | "skipped";
-type View = "dashboard" | "schedule" | "weekly" | "daily" | "errors" | "revisit" | "monthly" | "adjust" | "analytics";
+type View = "dashboard" | "schedule" | "weekly" | "daily" | "errors" | "revisit" | "monthly" | "adjust" | "analytics" | "resources" | "formulas" | "evaluate";
 
 interface DayTask {
   id: string;
@@ -1174,6 +1175,260 @@ export default function App() {
     );
   };
 
+  // ====== RESOURCES HUB ======
+  const ResourcesView = () => {
+    const [tab, setTab] = useState<"syllabus" | "sample" | "pyq" | "resources">("syllabus");
+    const tabData: Record<string, LinkSection[]> = { syllabus: SYLLABUS_LINKS, sample: SAMPLE_PAPERS, pyq: PYQ_LINKS, resources: GENERAL_RESOURCES };
+    const tabs = [
+      { k: "syllabus" as const, label: "Syllabus" },
+      { k: "sample" as const, label: "Papers" },
+      { k: "pyq" as const, label: "PYQs" },
+      { k: "resources" as const, label: "Resources" },
+    ];
+    return (
+      <div className="space-y-4 animate-fade-in-up">
+        <SectionTitle>CBSE Resource Hub</SectionTitle>
+        <div className="flex gap-1.5">
+          {tabs.map(t => (
+            <button key={t.k} onClick={() => setTab(t.k)}
+              className={`flex-1 text-[11px] py-2 rounded-xl font-semibold transition-all active:scale-95 ${tab === t.k ? "bg-brand-600 text-white shadow-sm" : "bg-gray-50 text-gray-500 hover:bg-gray-100"}`}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+        {tabData[tab]?.map((section, i) => (
+          <Card key={i} className="p-4">
+            <p className="text-[12px] font-bold text-gray-800 mb-2.5">{section.icon} {section.title}</p>
+            <div className="space-y-2">
+              {section.links.map((link, j) => (
+                <div key={j} className="flex items-center gap-2">
+                  {link.url !== "#" ? (
+                    <a href={link.url} target="_blank" rel="noopener noreferrer" className="text-[12px] text-brand-600 hover:text-brand-800 underline underline-offset-2 flex-1">{link.label}</a>
+                  ) : (
+                    <span className="text-[12px] text-gray-600 flex-1">{link.label}</span>
+                  )}
+                  {link.tag && (
+                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${TAG_COLORS[link.tag]?.bg || "bg-gray-100"} ${TAG_COLORS[link.tag]?.text || "text-gray-600"}`}>{link.tag}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </Card>
+        ))}
+      </div>
+    );
+  };
+
+  // ====== FORMULA CARDS ======
+  const FormulasView = () => {
+    const [subFilter, setSubFilter] = useState<Subject | "all">("all");
+    const [expandedCh, setExpandedCh] = useState<string | null>(null);
+    const filtered = subFilter === "all" ? FORMULAS : FORMULAS.filter(f => f.subject === subFilter);
+    const chapters = [...new Set(filtered.map(f => `${f.subject}-${f.chapterNum}-${f.chapter}`))];
+
+    return (
+      <div className="space-y-4 animate-fade-in-up">
+        <SectionTitle>Formula Quick Reference</SectionTitle>
+        {/* Subject Filter */}
+        <div className="flex gap-1.5">
+          {(["all", "physics", "chemistry", "maths"] as const).map(s => (
+            <button key={s} onClick={() => setSubFilter(s)}
+              className={`flex-1 text-[11px] py-2 rounded-xl font-semibold transition-all active:scale-95 ${subFilter === s ? "bg-brand-600 text-white shadow-sm" : "bg-gray-50 text-gray-500 hover:bg-gray-100"}`}>
+              {s === "all" ? "All" : s.charAt(0).toUpperCase() + s.slice(1)}
+            </button>
+          ))}
+        </div>
+        {/* PYQ Priority Legend */}
+        <div className="flex gap-2 items-center flex-wrap">
+          <span className="text-[9px] text-gray-400 font-semibold">PYQ Priority:</span>
+          {(["VERY HIGH", "HIGH", "MEDIUM"] as const).map(p => (
+            <span key={p} className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${TAG_COLORS[p].bg} ${TAG_COLORS[p].text}`}>{p}</span>
+          ))}
+        </div>
+        {/* Chapter Accordion */}
+        {chapters.map(chKey => {
+          const [subj, numStr, ...rest] = chKey.split("-");
+          const chName = rest.join("-");
+          const chNum = parseInt(numStr);
+          const chFormulas = filtered.filter(f => f.subject === subj && f.chapterNum === chNum);
+          const chPriorities = PYQ_PRIORITIES.filter(p => p.subject === subj as Subject && p.chapterNum === chNum);
+          const isOpen = expandedCh === chKey;
+          const sc = SUBJ[subj as Subject];
+
+          return (
+            <Card key={chKey} className="overflow-hidden">
+              <button onClick={() => setExpandedCh(isOpen ? null : chKey)} className="w-full p-3.5 flex items-center justify-between text-left">
+                <div className="flex items-center gap-2">
+                  <Badge className={`bg-gradient-to-r ${sc.gradient} text-white uppercase`}>{sc.icon}</Badge>
+                  <div>
+                    <p className="text-[12px] font-semibold text-gray-800">Ch.{chNum} {chName}</p>
+                    <p className="text-[10px] text-gray-400">{chFormulas.length} formulas</p>
+                  </div>
+                </div>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" className={`transition-transform ${isOpen ? "rotate-180" : ""}`}><path d="M6 9l6 6 6-6"/></svg>
+              </button>
+              {isOpen && (
+                <div className="px-3.5 pb-3.5 space-y-3">
+                  {/* Formulas */}
+                  <div className="space-y-1.5">
+                    {chFormulas.map((f, i) => (
+                      <div key={i} className="flex items-baseline justify-between gap-2 py-1.5 border-b border-gray-50 last:border-0">
+                        <span className="text-[11px] text-gray-500 font-medium">{f.name}</span>
+                        <span className="text-[12px] font-mono font-semibold text-gray-800 text-right">{f.formula}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {/* PYQ Priorities */}
+                  {chPriorities.length > 0 && (
+                    <div>
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">PYQ Exam Priority</p>
+                      {chPriorities.map((p, i) => (
+                        <div key={i} className="flex items-center gap-2 py-1.5">
+                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${TAG_COLORS[p.priority].bg} ${TAG_COLORS[p.priority].text}`}>{p.priority}</span>
+                          <span className="text-[11px] text-gray-700 flex-1">{p.topic}</span>
+                          <span className="text-[10px] text-gray-400">{p.marks}m</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </Card>
+          );
+        })}
+        {filtered.length === 0 && <EmptyState icon={"\uD83D\uDCCB"} title="No formulas" subtitle="Select a subject to view formulas" />}
+      </div>
+    );
+  };
+
+  // ====== TEST EVALUATION ======
+  const EvaluateView = () => {
+    const [selWeek, setSelWeek] = useState(1);
+    const [selSubj, setSelSubj] = useState<Subject>("physics");
+    const [scores, setScores] = useState<Record<string, number>>({});
+    const [saved, setSaved] = useState(false);
+
+    const paper = TEST_PAPERS.find(p => p.week === selWeek && p.subject === selSubj);
+    const scoreKey = `eval-w${selWeek}-${selSubj}`;
+
+    useEffect(() => {
+      const stored = localStorage.getItem(scoreKey);
+      if (stored) { setScores(JSON.parse(stored)); setSaved(true); } else { setScores({}); setSaved(false); }
+    }, [scoreKey]);
+
+    const totalScored = Object.values(scores).reduce((a, b) => a + b, 0);
+    const totalMax = paper ? paper.totalMarks : 30;
+    const pct = totalMax > 0 ? Math.round((totalScored / totalMax) * 100) : 0;
+
+    const saveEval = () => {
+      localStorage.setItem(scoreKey, JSON.stringify(scores));
+      setSaved(true);
+      flash("Evaluation saved", 880);
+    };
+
+    if (!paper) return <EmptyState icon={"\uD83D\uDCDD"} title="No test paper" subtitle="Test papers available for Week 1 & 2" />;
+
+    return (
+      <div className="space-y-4 animate-fade-in-up">
+        <SectionTitle>Test Evaluation</SectionTitle>
+        <Card className="p-3.5 bg-amber-50/50 border-amber-100">
+          <div className="flex gap-2 items-start">
+            <span className="text-sm mt-0.5">{"\uD83D\uDD12"}</span>
+            <p className="text-[11px] text-gray-600 leading-relaxed"><b>For Shweta only.</b> Score each question using the marking rubric below.</p>
+          </div>
+        </Card>
+        {/* Selectors */}
+        <div className="grid grid-cols-2 gap-2.5">
+          <div>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Week</p>
+            <div className="flex gap-1.5">
+              {[1, 2].map(w => (
+                <button key={w} onClick={() => { setSelWeek(w); setScores({}); setSaved(false); }}
+                  className={`flex-1 text-[12px] py-2 rounded-xl font-semibold transition-all active:scale-95 ${selWeek === w ? "bg-brand-600 text-white" : "bg-gray-50 text-gray-500"}`}>
+                  Week {w}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Subject</p>
+            <div className="flex gap-1">
+              {(["physics", "chemistry", "maths"] as Subject[]).map(s => (
+                <button key={s} onClick={() => { setSelSubj(s); setScores({}); setSaved(false); }}
+                  className={`flex-1 text-[10px] py-2 rounded-xl font-semibold transition-all active:scale-95 ${selSubj === s ? `bg-gradient-to-r ${SUBJ[s].gradient} text-white` : "bg-gray-50 text-gray-500"}`}>
+                  {SUBJ[s].icon}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+        {/* Score Summary */}
+        <Card className={`p-4 ${pct >= 80 ? "bg-emerald-50/50 border-emerald-100" : pct >= 50 ? "bg-amber-50/50 border-amber-100" : "bg-gray-50"}`}>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Total Score</p>
+              <p className="text-2xl font-black text-gray-800 mt-0.5">{totalScored} <span className="text-sm text-gray-400 font-medium">/ {totalMax}</span></p>
+            </div>
+            <div className="relative flex items-center justify-center">
+              <ProgressRing pct={pct} size={56} stroke={5} color={pct >= 80 ? "#10b981" : pct >= 50 ? "#f59e0b" : "#6b7280"} />
+              <span className="absolute text-[13px] font-black text-gray-700">{pct}%</span>
+            </div>
+          </div>
+          {saved && <p className="text-[10px] text-emerald-600 font-semibold mt-2">{"\u2705"} Saved</p>}
+        </Card>
+        {/* Questions by Section */}
+        {paper.sections.map(section => (
+          <Card key={section.name} className="p-4">
+            <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-3">{section.name}</p>
+            <div className="space-y-3">
+              {section.questions.map(q => {
+                const qKey = `q${q.num}`;
+                const qScore = scores[qKey] ?? -1;
+                return (
+                  <div key={q.num} className="border-b border-gray-50 pb-3 last:border-0 last:pb-0">
+                    <div className="flex items-start justify-between gap-2 mb-1.5">
+                      <div className="flex-1">
+                        <p className="text-[12px] font-semibold text-gray-800">Q{q.num}. {q.topic}</p>
+                        <p className="text-[10px] text-gray-400 mt-0.5">Max: {q.marks} marks</p>
+                      </div>
+                      {/* Score Input */}
+                      <div className="flex gap-1 flex-shrink-0">
+                        {Array.from({ length: q.marks + 1 }, (_, i) => i).map(score => (
+                          <button key={score} onClick={() => { setScores(prev => ({ ...prev, [qKey]: score })); setSaved(false); }}
+                            className={`w-7 h-7 rounded-lg text-[11px] font-bold transition-all active:scale-90 ${qScore === score
+                              ? score === q.marks ? "bg-emerald-600 text-white" : score === 0 ? "bg-red-500 text-white" : "bg-brand-600 text-white"
+                              : "bg-gray-50 text-gray-400 hover:bg-gray-100"
+                            }`}>
+                            {score}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {/* Rubric */}
+                    <div className="space-y-0.5">
+                      {q.rubric.map((r, ri) => (
+                        <p key={ri} className="text-[10px] text-gray-400 pl-2 border-l-2 border-gray-100">{r}</p>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+        ))}
+        {/* Actions */}
+        <div className="grid grid-cols-2 gap-2.5">
+          <button onClick={saveEval} className="bg-brand-600 text-white text-[12px] py-3 rounded-xl font-semibold hover:bg-brand-700 active:scale-[0.98] transition-all shadow-sm shadow-brand-600/20">
+            Save Evaluation
+          </button>
+          <button onClick={() => setView("errors")} className="bg-gray-50 text-gray-600 text-[12px] py-3 rounded-xl font-semibold hover:bg-gray-100 active:scale-[0.98] transition-all">
+            Log Errors {"\u2192"}
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   const AdjustView = () => {
     const [markWeek, setMarkWeek] = useState(actW);
     const [confirmReset, setConfirmReset] = useState(false);
@@ -1227,9 +1482,9 @@ export default function App() {
     { v: "daily", label: "Today", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> },
     { v: "monthly", label: "Monthly", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg> },
     { v: "analytics", label: "Analytics", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> },
-    { v: "errors", label: "Errors", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> },
-    { v: "revisit", label: "Revisit", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg> },
-    { v: "adjust", label: "Adjust", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> },
+    { v: "formulas", label: "Formulas", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg> },
+    { v: "evaluate", label: "Evaluate", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> },
+    { v: "resources", label: "Resources", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> },
   ];
 
   return (
@@ -1266,6 +1521,9 @@ export default function App() {
           {view === "revisit" && <RevisitView />}
           {view === "monthly" && <MonthlyView />}
           {view === "analytics" && <AnalyticsView />}
+          {view === "resources" && <ResourcesView />}
+          {view === "formulas" && <FormulasView />}
+          {view === "evaluate" && <EvaluateView />}
           {view === "adjust" && <AdjustView />}
         </div>
       </div>
