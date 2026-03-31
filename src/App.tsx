@@ -1,0 +1,834 @@
+import { useState, useEffect, useCallback } from "react";
+
+type Subject = "physics" | "chemistry" | "maths";
+type Phase = "foundation" | "practice" | "mock";
+type TaskStatus = "pending" | "done" | "skipped";
+type View = "dashboard" | "schedule" | "weekly" | "daily" | "errors" | "revisit" | "monthly" | "adjust";
+
+interface DayTask {
+  id: string;
+  subject: Subject;
+  chapter: number;
+  chapterName: string;
+  topic: string;
+  type: "study" | "practice" | "revision" | "test" | "buffer";
+  hours: number;
+}
+
+interface WeekData {
+  week: number;
+  phase: Phase;
+  startDate: string;
+  label: string;
+  days: Record<string, DayTask[]>;
+}
+
+interface ProgressEntry {
+  taskId: string;
+  status: TaskStatus;
+  date: string;
+  notes: string;
+  rating: number;
+}
+
+interface ErrorEntry {
+  id: string;
+  date: string;
+  subject: Subject;
+  chapter: string;
+  topic: string;
+  errorType: "silly" | "concept" | "time" | "formula" | "reading";
+  question: string;
+  whatWentWrong: string;
+  correctApproach: string;
+  resolved: boolean;
+}
+
+const PHYS_CH = ["Electric Charges and Fields","Electrostatic Potential & Capacitance","Current Electricity","Moving Charges and Magnetism","Magnetism and Matter","Electromagnetic Induction","Alternating Currents","Electromagnetic Waves","Ray Optics & Optical Instruments","Wave Optics","Dual Nature of Radiation & Matter","Atoms","Nuclei","Semiconductor Electronics"];
+const CHEM_CH = ["Solutions","Electrochemistry","Chemical Kinetics","d- and f-Block Elements","Coordination Compounds","Haloalkanes and Haloarenes","Alcohols, Phenols & Ethers","Aldehydes, Ketones & Carboxylic Acids","Amines","Biomolecules"];
+const MATH_CH = ["Relations and Functions","Inverse Trigonometric Functions","Matrices","Determinants","Continuity & Differentiability","Applications of Derivatives","Integrals","Applications of Integrals","Differential Equations","Vectors","Three-Dimensional Geometry","Linear Programming","Probability"];
+
+const SUBJ: Record<Subject, { bg: string; text: string; light: string; border: string; ring: string; gradient: string; icon: string }> = {
+  physics: { bg: "bg-blue-600", text: "text-blue-600", light: "bg-blue-50", border: "border-blue-100", ring: "ring-blue-500/20", gradient: "from-blue-500 to-blue-600", icon: "Phy" },
+  chemistry: { bg: "bg-emerald-600", text: "text-emerald-600", light: "bg-emerald-50", border: "border-emerald-100", ring: "ring-emerald-500/20", gradient: "from-emerald-500 to-emerald-600", icon: "Chm" },
+  maths: { bg: "bg-violet-600", text: "text-violet-600", light: "bg-violet-50", border: "border-violet-100", ring: "ring-violet-500/20", gradient: "from-violet-500 to-violet-600", icon: "Mth" },
+};
+
+const PHASE_META: Record<Phase, { bg: string; text: string; activeBg: string; activeBorder: string; sw: number; ew: number; label: string; range: string; icon: string }> = {
+  foundation: { bg: "bg-sky-50", text: "text-sky-700", activeBg: "bg-sky-100", activeBorder: "border-sky-400", sw: 1, ew: 17, label: "Foundation", range: "Week 1-17", icon: "I" },
+  practice: { bg: "bg-amber-50", text: "text-amber-700", activeBg: "bg-amber-100", activeBorder: "border-amber-400", sw: 18, ew: 24, label: "Practice", range: "Week 18-24", icon: "II" },
+  mock: { bg: "bg-rose-50", text: "text-rose-700", activeBg: "bg-rose-100", activeBorder: "border-rose-400", sw: 25, ew: 28, label: "Mocks", range: "Week 25-28", icon: "III" },
+};
+
+const TYPE_BADGE: Record<string, string> = {
+  test: "bg-red-50 text-red-600 ring-1 ring-red-500/10",
+  practice: "bg-amber-50 text-amber-600 ring-1 ring-amber-500/10",
+  revision: "bg-purple-50 text-purple-600 ring-1 ring-purple-500/10",
+  study: "bg-sky-50 text-sky-600 ring-1 ring-sky-500/10",
+  buffer: "bg-gray-50 text-gray-500 ring-1 ring-gray-500/10",
+};
+
+function mkTask(w: number, d: string, s: Subject, ch: number, topic: string, type: DayTask["type"], hrs: number, idx: number): DayTask {
+  const chs = s === "physics" ? PHYS_CH : s === "chemistry" ? CHEM_CH : MATH_CH;
+  return { id: `w${w}-${d}-${s}-${idx}`, subject: s, chapter: ch, chapterName: chs[ch - 1] || "Revision", topic, type, hours: hrs };
+}
+
+function generateSchedule(): WeekData[] {
+  const weeks: WeekData[] = [];
+  const startDate = new Date(2026, 3, 6);
+  function weekRange(w: number): string {
+    const s = new Date(startDate); s.setDate(s.getDate() + (w - 1) * 7);
+    const e = new Date(s); e.setDate(e.getDate() + 5);
+    return `${s.toLocaleDateString("en-IN", { month: "short", day: "numeric" })} - ${e.toLocaleDateString("en-IN", { month: "short", day: "numeric" })}`;
+  }
+  const foundation = [
+    { p: 1, c: 1, m: 1, l: "Electrostatics I + Solutions + Relations" },
+    { p: 2, c: 2, m: 2, l: "Electrostatics II + Electrochemistry + Inv Trig" },
+    { p: 3, c: 3, m: 3, l: "Current Electricity + Kinetics + Matrices" },
+    { p: 4, c: 4, m: 4, l: "Moving Charges + d&f Block + Determinants" },
+    { p: 5, c: 5, m: 5, l: "Magnetism + Coord Compounds + Continuity" },
+    { p: 0, c: 0, m: 0, l: "BUFFER - Revision Week 1-5", b: true },
+    { p: 6, c: 6, m: 6, l: "EMI + Haloalkanes + App of Derivatives" },
+    { p: 7, c: 7, m: 7, l: "AC + Alcohols/Phenols + Integrals I" },
+    { p: 8, c: 8, m: 7, l: "EM Waves + Aldehydes/Ketones + Integrals II" },
+    { p: 9, c: 9, m: 8, l: "Ray Optics + Amines + App of Integrals" },
+    { p: 10, c: 10, m: 9, l: "Wave Optics + Biomolecules + Diff Equations" },
+    { p: 0, c: 0, m: 0, l: "BUFFER - Revision Week 7-11", b: true },
+    { p: 11, c: 0, m: 10, l: "Dual Nature + Vectors (Chem revision)" },
+    { p: 12, c: 0, m: 11, l: "Atoms + 3D Geometry (Chem revision)" },
+    { p: 13, c: 0, m: 12, l: "Nuclei + Linear Programming (Chem revision)" },
+    { p: 14, c: 0, m: 13, l: "Semiconductors + Probability (Chem revision)" },
+    { p: 0, c: 0, m: 0, l: "BUFFER - Full syllabus review", b: true },
+  ] as Array<{ p: number; c: number; m: number; l: string; b?: boolean }>;
+  foundation.forEach((f, i) => {
+    const w = i + 1;
+    const d: Record<string, DayTask[]> = { Mon: [], Tue: [], Wed: [], Thu: [], Fri: [], Sat: [], Sun: [] };
+    if (f.b) {
+      d.Mon = [mkTask(w, "Mon", "physics", 0, "Revision: Physics weak areas", "revision", 3, 0)];
+      d.Tue = [mkTask(w, "Tue", "chemistry", 0, "Revision: Chemistry weak areas", "revision", 3, 0)];
+      d.Wed = [mkTask(w, "Wed", "maths", 0, "Revision: Maths weak areas", "revision", 3, 0)];
+      d.Thu = [mkTask(w, "Thu", "physics", 0, "Practice: Numericals", "practice", 3, 0)];
+      d.Fri = [mkTask(w, "Fri", "chemistry", 0, "Practice: Reactions", "practice", 3, 0)];
+      d.Sat = [mkTask(w, "Sat", "maths", 0, "Practice: Mixed Problems", "practice", 3, 0)];
+    } else {
+      if (f.p > 0) { d.Mon = [mkTask(w, "Mon", "physics", f.p, `${PHYS_CH[f.p - 1]} - Theory+NCERT`, "study", 3, 0)]; d.Tue = [mkTask(w, "Tue", "physics", f.p, `${PHYS_CH[f.p - 1]} - Numericals`, "practice", 3, 0)]; }
+      if (f.c > 0) { d.Wed = [mkTask(w, "Wed", "chemistry", f.c, `${CHEM_CH[f.c - 1]} - Theory+NCERT`, "study", 3, 0)]; d.Thu = [mkTask(w, "Thu", "chemistry", f.c, `${CHEM_CH[f.c - 1]} - Problems`, "practice", 3, 0)]; }
+      else if (f.p > 0) { d.Wed = [mkTask(w, "Wed", "chemistry", 0, "Chemistry Revision", "revision", 2, 0)]; d.Thu = [mkTask(w, "Thu", "chemistry", 0, "Chemistry Numericals", "revision", 2, 0)]; }
+      if (f.m > 0) { d.Fri = [mkTask(w, "Fri", "maths", f.m, `${MATH_CH[f.m - 1]} - Theory+Examples`, "study", 3, 0)]; d.Sat = [mkTask(w, "Sat", "maths", f.m, `${MATH_CH[f.m - 1]} - Exercises`, "practice", 3, 0)]; }
+    }
+    d.Sun = [mkTask(w, "Sun", "physics", f.p, "Weekly Test: Physics (1hr)", "test", 1, 0), mkTask(w, "Sun", "chemistry", f.c || 0, "Weekly Test: Chemistry (1hr)", "test", 1, 1), mkTask(w, "Sun", "maths", f.m, "Weekly Test: Maths (1hr)", "test", 1, 2)];
+    weeks.push({ week: w, phase: "foundation", startDate: weekRange(w), label: f.l, days: d });
+  });
+  const practiceLabels = ["Physics - Electrostatics+Current+Magnetism", "Physics - Optics+Modern+Semi", "Chemistry - Physical Chemistry", "Chemistry - Organic+Inorganic", "Maths - Calculus Marathon", "Maths - Algebra+Vectors+3D+Prob", "Cross-Subject Mixed"];
+  for (let i = 0; i < 7; i++) {
+    const w = 18 + i;
+    const d: Record<string, DayTask[]> = { Mon: [], Tue: [], Wed: [], Thu: [], Fri: [], Sat: [], Sun: [] };
+    const sj: Subject = i < 2 ? "physics" : i < 4 ? "chemistry" : i < 6 ? "maths" : "physics";
+    ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].forEach((dn, di) => { const s: Subject = i === 6 ? (di < 2 ? "physics" : di < 4 ? "chemistry" : "maths") : sj; d[dn] = [mkTask(w, dn, s, 0, "Intensive PYQ+Numericals", "practice", 3, 0)]; });
+    d.Sun = [mkTask(w, "Sun", "physics", 0, "Weekly Test: Physics", "test", 1, 0), mkTask(w, "Sun", "chemistry", 0, "Weekly Test: Chemistry", "test", 1, 1), mkTask(w, "Sun", "maths", 0, "Weekly Test: Maths", "test", 1, 2)];
+    weeks.push({ week: w, phase: "practice", startDate: weekRange(w), label: practiceLabels[i], days: d });
+  }
+  for (let i = 0; i < 4; i++) {
+    const w = 25 + i;
+    const d: Record<string, DayTask[]> = { Mon: [], Tue: [], Wed: [], Thu: [], Fri: [], Sat: [], Sun: [] };
+    d.Mon = [mkTask(w, "Mon", "physics", 0, `Mock Test ${i + 1} - Physics (3hrs)`, "test", 3, 0)];
+    d.Tue = [mkTask(w, "Tue", "physics", 0, "Mock Analysis+Revision", "revision", 3, 0)];
+    d.Wed = [mkTask(w, "Wed", "chemistry", 0, `Mock Test ${i + 1} - Chemistry (3hrs)`, "test", 3, 0)];
+    d.Thu = [mkTask(w, "Thu", "chemistry", 0, "Mock Analysis+Revision", "revision", 3, 0)];
+    d.Fri = [mkTask(w, "Fri", "maths", 0, `Mock Test ${i + 1} - Maths (3hrs)`, "test", 3, 0)];
+    d.Sat = [mkTask(w, "Sat", "maths", 0, "Mock Analysis+Error Journal", "revision", 3, 0)];
+    d.Sun = [mkTask(w, "Sun", "physics", 0, "Rest+Light Revision", "revision", 2, 0)];
+    weeks.push({ week: w, phase: "mock", startDate: weekRange(w), label: `MOCK TEST SERIES - Round ${i + 1}`, days: d });
+  }
+  return weeks;
+}
+
+function loadData<T>(key: string, fallback: T): T {
+  try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; } catch { return fallback; }
+}
+function saveData(key: string, data: unknown) {
+  try { localStorage.setItem(key, JSON.stringify(data)); } catch (e) { console.error(e); }
+}
+function playBeep(freq = 880, dur = 0.2) {
+  try {
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx(), osc = ctx.createOscillator(), gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination); osc.frequency.value = freq; osc.type = "sine"; gain.gain.value = 0.12;
+    osc.start(); gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur); osc.stop(ctx.currentTime + dur);
+  } catch {}
+}
+
+// ====== Shared UI Components ======
+function Card({ children, className = "", onClick }: { children: React.ReactNode; className?: string; onClick?: () => void }) {
+  const base = "bg-white rounded-2xl border border-gray-100 shadow-sm";
+  if (onClick) return <button onClick={onClick} className={`${base} hover:shadow-md hover:border-gray-200 active:scale-[0.98] transition-all duration-200 text-left w-full ${className}`}>{children}</button>;
+  return <div className={`${base} ${className}`}>{children}</div>;
+}
+
+function Badge({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return <span className={`inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-md tracking-wide ${className}`}>{children}</span>;
+}
+
+function ProgressRing({ pct, size = 48, stroke = 4, color = "#4f46e5" }: { pct: number; size?: number; stroke?: number; color?: string }) {
+  const r = (size - stroke) / 2;
+  const circ = 2 * Math.PI * r;
+  const offset = circ - (pct / 100) * circ;
+  return (
+    <svg width={size} height={size} className="transform -rotate-90">
+      <circle cx={size / 2} cy={size / 2} r={r} stroke="#e5e7eb" strokeWidth={stroke} fill="none" />
+      <circle cx={size / 2} cy={size / 2} r={r} stroke={color} strokeWidth={stroke} fill="none" strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round" className="transition-all duration-1000 ease-out" />
+    </svg>
+  );
+}
+
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return <h2 className="text-[15px] font-bold text-gray-900 tracking-tight">{children}</h2>;
+}
+
+function EmptyState({ icon, title, subtitle }: { icon: string; title: string; subtitle: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-12 px-4">
+      <div className="w-14 h-14 rounded-2xl bg-gray-50 flex items-center justify-center text-2xl mb-3">{icon}</div>
+      <p className="text-sm font-semibold text-gray-800">{title}</p>
+      <p className="text-xs text-gray-400 mt-1">{subtitle}</p>
+    </div>
+  );
+}
+
+// ====== MAIN APP ======
+export default function App() {
+  const [view, setView] = useState<View>("dashboard");
+  const [schedule] = useState<WeekData[]>(() => generateSchedule());
+  const [progress, setProgress] = useState<Record<string, ProgressEntry>>({});
+  const [notes, setNotes] = useState<Record<string, string>>({});
+  const [errors, setErrors] = useState<ErrorEntry[]>([]);
+  const [selW, setSelW] = useState(1);
+  const [actW, setActW] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [toast, setToast] = useState("");
+
+  useEffect(() => {
+    setProgress(loadData("shikhar-progress", {}));
+    setNotes(loadData("shikhar-notes", {}));
+    const aw = loadData("shikhar-active-week", 1);
+    setActW(aw); setSelW(aw);
+    setErrors(loadData("shikhar-errors", []));
+    setLoading(false);
+  }, []);
+
+  const flash = useCallback((m: string, f = 880) => { setToast(m); playBeep(f); setTimeout(() => setToast(""), 2200); }, []);
+  const chgActW = useCallback((w: number) => { setActW(w); saveData("shikhar-active-week", w); flash(`Week ${w} active`, 660); }, [flash]);
+
+  const markTask = useCallback((tid: string, st: TaskStatus, rat = 0) => {
+    setProgress(prev => { const u = { ...prev, [tid]: { taskId: tid, status: st, date: new Date().toISOString(), notes: "", rating: rat } }; saveData("shikhar-progress", u); return u; });
+    flash(st === "done" ? "Marked complete" : st === "skipped" ? "Skipped" : "Restored", st === "done" ? 880 : 440);
+  }, [flash]);
+
+  const updNote = useCallback((k: string, t: string) => { setNotes(prev => { const u = { ...prev, [k]: t }; saveData("shikhar-notes", u); return u; }); }, []);
+
+  const addError = useCallback((entry: Omit<ErrorEntry, "id" | "date" | "resolved">) => {
+    setErrors(prev => { const u = [{ ...entry, id: `err-${Date.now()}`, date: new Date().toISOString(), resolved: false }, ...prev]; saveData("shikhar-errors", u); return u; });
+    flash("Error logged", 550);
+  }, [flash]);
+
+  const toggleErrorResolved = useCallback((id: string) => { setErrors(prev => { const u = prev.map(e => e.id === id ? { ...e, resolved: !e.resolved } : e); saveData("shikhar-errors", u); return u; }); }, []);
+  const deleteError = useCallback((id: string) => { setErrors(prev => { const u = prev.filter(e => e.id !== id); saveData("shikhar-errors", u); return u; }); flash("Removed", 440); }, [flash]);
+
+  const allTasks = schedule.flatMap(w => Object.values(w.days).flat());
+  const totalT = allTasks.length;
+  const doneT = allTasks.filter(t => progress[t.id]?.status === "done").length;
+  const skipT = allTasks.filter(t => progress[t.id]?.status === "skipped").length;
+  const pctAll = totalT > 0 ? Math.round((doneT / totalT) * 100) : 0;
+
+  const sStats = (s: Subject) => { const st = allTasks.filter(t => t.subject === s); const sd = st.filter(t => progress[t.id]?.status === "done").length; return { total: st.length, done: sd, pct: st.length ? Math.round((sd / st.length) * 100) : 0 }; };
+  const wProg = (w: WeekData) => { const wt = Object.values(w.days).flat(); const wd = wt.filter(t => progress[t.id]?.status === "done").length; return { total: wt.length, done: wd, pct: wt.length ? Math.round((wd / wt.length) * 100) : 0 }; };
+  const curPh: Phase = actW <= 17 ? "foundation" : actW <= 24 ? "practice" : "mock";
+  const behind = (() => { const pt = schedule.filter(w => w.week < actW).flatMap(w => Object.values(w.days).flat()); return pt.length - pt.filter(t => progress[t.id]?.status === "done").length; })();
+
+  const getRevisitItems = () => {
+    const weak = Object.values(progress).filter(p => p.status === "done" && p.rating > 0 && p.rating <= 2);
+    const items: Array<{ task: DayTask; entry: ProgressEntry; revisitDates: string[]; urgency: "overdue" | "today" | "upcoming" | "done" }> = [];
+    weak.forEach(entry => {
+      const task = allTasks.find(t => t.id === entry.taskId); if (!task) return;
+      const dd = new Date(entry.date);
+      const r1 = new Date(dd); r1.setDate(r1.getDate() + 3);
+      const r2 = new Date(dd); r2.setDate(r2.getDate() + 7);
+      const r3 = new Date(dd); r3.setDate(r3.getDate() + 14);
+      const revisitDates = [r1, r2, r3].map(d => d.toLocaleDateString("en-IN", { month: "short", day: "numeric" }));
+      const now = new Date();
+      const nr = r1 > now ? r1 : r2 > now ? r2 : r3 > now ? r3 : null;
+      let urgency: typeof items[0]["urgency"] = "done";
+      if (nr) { const diff = Math.floor((nr.getTime() - now.getTime()) / 86400000); urgency = diff < 0 ? "overdue" : diff === 0 ? "today" : "upcoming"; }
+      items.push({ task, entry, revisitDates, urgency });
+    });
+    items.sort((a, b) => ({ overdue: 0, today: 1, upcoming: 2, done: 3 })[a.urgency] - ({ overdue: 0, today: 1, upcoming: 2, done: 3 })[b.urgency]);
+    return items;
+  };
+
+  const ph = sStats("physics"), ch = sStats("chemistry"), ma = sStats("maths");
+
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="flex flex-col items-center gap-3">
+        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 animate-pulse" />
+        <p className="text-xs text-gray-400 font-medium">Loading...</p>
+      </div>
+    </div>
+  );
+
+  // ====== Task Card ======
+  const TaskCard = ({ task, idx = 0 }: { task: DayTask; idx?: number }) => {
+    const [showR, setShowR] = useState(false);
+    const p = progress[task.id];
+    const isDone = p?.status === "done";
+    const isSkip = p?.status === "skipped";
+    const sc = SUBJ[task.subject];
+    return (
+      <div style={{ animationDelay: `${idx * 50}ms` }} className={`animate-fade-in-up rounded-2xl border p-3.5 transition-all duration-200 ${isDone ? "bg-gray-50/80 border-gray-100" : isSkip ? "bg-gray-50/50 border-gray-100 opacity-50" : `${sc.light} ${sc.border}`}`}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+              <Badge className={`bg-gradient-to-r ${sc.gradient} text-white uppercase`}>{sc.icon}</Badge>
+              <Badge className={TYPE_BADGE[task.type] || TYPE_BADGE.buffer}>{task.type}</Badge>
+              {task.chapter > 0 && <span className="text-[10px] text-gray-400 font-medium">Ch.{task.chapter}</span>}
+            </div>
+            <p className={`text-[13px] font-semibold leading-snug ${isDone ? "line-through text-gray-400" : "text-gray-800"}`}>{task.topic}</p>
+            <p className="text-[11px] text-gray-400 mt-1">{task.hours}h &middot; {task.chapterName}</p>
+            {p?.rating > 0 && (
+              <div className="mt-1.5 flex gap-0.5">{[1, 2, 3, 4, 5].map(s => <span key={s} className={`text-[11px] ${s <= p.rating ? "text-amber-400" : "text-gray-200"}`}>{"\u2605"}</span>)}</div>
+            )}
+          </div>
+          <div className="flex flex-col gap-1.5 flex-shrink-0">
+            {!isDone && !isSkip && (
+              <>
+                <button onClick={() => setShowR(!showR)} className="text-[11px] bg-brand-600 text-white px-3 py-1.5 rounded-lg hover:bg-brand-700 active:scale-95 font-semibold transition-all shadow-sm shadow-brand-600/20">Done</button>
+                <button onClick={() => markTask(task.id, "skipped")} className="text-[11px] text-gray-400 px-3 py-1.5 rounded-lg hover:bg-gray-100 active:scale-95 font-medium transition-all">Skip</button>
+              </>
+            )}
+            {(isDone || isSkip) && (
+              <button onClick={() => markTask(task.id, "pending")} className="text-[11px] text-gray-400 px-3 py-1.5 rounded-lg hover:bg-gray-100 active:scale-95 font-medium transition-all">Undo</button>
+            )}
+          </div>
+        </div>
+        {showR && (
+          <div className="mt-3 pt-3 border-t border-gray-200/60">
+            <p className="text-[11px] text-gray-500 mb-2 font-medium">How well did you understand?</p>
+            <div className="flex gap-2">
+              {[1, 2, 3, 4, 5].map(r => (
+                <button key={r} onClick={() => { markTask(task.id, "done", r); setShowR(false); }} className="w-9 h-9 rounded-xl bg-gray-50 hover:bg-gray-100 flex items-center justify-center text-lg active:scale-90 transition-all hover:shadow-sm">
+                  {r <= 2 ? "\uD83D\uDE1F" : r === 3 ? "\uD83D\uDE10" : r === 4 ? "\uD83D\uDE0A" : "\uD83C\uDF1F"}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // ====== Progress Bar ======
+  const SubjectBar = ({ pct, color, label, detail }: { pct: number; color: string; label: string; detail: string }) => (
+    <div className="flex items-center gap-3 py-2">
+      <span className="text-[12px] font-semibold text-gray-700 w-20">{label}</span>
+      <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+        <div className={`h-full rounded-full transition-all duration-1000 ease-out ${color}`} style={{ width: `${pct}%` }} />
+      </div>
+      <span className="text-[11px] text-gray-400 font-medium w-12 text-right">{detail}</span>
+      <span className="text-[12px] font-bold text-gray-700 w-10 text-right">{pct}%</span>
+    </div>
+  );
+
+  // ====== VIEWS ======
+
+  const DashboardView = () => (
+    <div className="space-y-5 animate-fade-in-up">
+      {/* Week Selector */}
+      <Card className="p-4 pb-3">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Active Week</p>
+            <p className="text-sm font-bold text-gray-800 mt-0.5">{schedule[actW - 1]?.label}</p>
+          </div>
+          <div className="bg-brand-50 text-brand-700 text-xs font-bold px-3 py-1 rounded-full">{schedule[actW - 1]?.startDate}</div>
+        </div>
+        {/* Phase-grouped week pills */}
+        <div className="space-y-2">
+          {(["foundation", "practice", "mock"] as Phase[]).map(phase => {
+            const meta = PHASE_META[phase];
+            const phaseWeeks = schedule.filter(w => w.phase === phase);
+            return (
+              <div key={phase}>
+                <p className={`text-[9px] font-bold uppercase tracking-widest mb-1.5 ${meta.text}`}>{meta.label}</p>
+                <div className="flex gap-1 flex-wrap">
+                  {phaseWeeks.map(w => {
+                    const isActive = w.week === actW;
+                    const wp = wProg(w);
+                    const done = wp.pct === 100;
+                    return (
+                      <button key={w.week} onClick={() => chgActW(w.week)}
+                        className={`relative w-[30px] h-[30px] rounded-lg text-[11px] font-bold transition-all duration-200 active:scale-90 flex items-center justify-center
+                          ${isActive
+                            ? "bg-brand-600 text-white shadow-md shadow-brand-600/30 scale-110"
+                            : done
+                              ? "bg-emerald-50 text-emerald-600 ring-1 ring-emerald-200 hover:ring-emerald-300"
+                              : "bg-gray-50 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                          }`}>
+                        {w.week}
+                        {done && !isActive && (
+                          <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-emerald-500 rounded-full ring-1 ring-white" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+
+      {/* Hero Progress */}
+      <div className="bg-gradient-to-br from-brand-600 via-brand-700 to-brand-800 rounded-2xl p-5 text-white shadow-xl shadow-brand-600/20 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-40 h-40 bg-white/5 rounded-full -mr-10 -mt-10" />
+        <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/5 rounded-full -ml-6 -mb-6" />
+        <div className="relative flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-base font-bold">Overall Progress</h2>
+            <p className="text-[11px] text-white/60 mt-0.5">28 Weeks &middot; Apr 6 - Oct 18, 2026</p>
+          </div>
+          <div className="relative flex items-center justify-center">
+            <ProgressRing pct={pctAll} size={56} stroke={5} color="#fff" />
+            <span className="absolute text-sm font-black">{pctAll}%</span>
+          </div>
+        </div>
+        <div className="h-2 bg-white/15 rounded-full overflow-hidden">
+          <div className="h-full bg-white rounded-full transition-all duration-1000 ease-out" style={{ width: `${pctAll}%` }} />
+        </div>
+        <div className="flex justify-between mt-3 text-[11px] text-white/50 font-medium">
+          <span>{doneT} completed</span><span>{skipT} skipped</span><span>{totalT - doneT - skipT} remaining</span>
+        </div>
+      </div>
+
+      {/* Phase Cards */}
+      <div className="grid grid-cols-3 gap-2.5">
+        {(["foundation", "practice", "mock"] as Phase[]).map(p => {
+          const info = PHASE_META[p]; const isAct = curPh === p;
+          const pTasks = schedule.filter(w => w.phase === p).flatMap(w => Object.values(w.days).flat());
+          const pDone = pTasks.filter(t => progress[t.id]?.status === "done").length;
+          const pPct = pTasks.length ? Math.round((pDone / pTasks.length) * 100) : 0;
+          return (
+            <Card key={p} onClick={() => { setSelW(info.sw); setView("weekly"); }} className={`p-3 text-center ${isAct ? `${info.activeBg} ${info.activeBorder} border-2 shadow-md` : ""}`}>
+              <div className={`w-7 h-7 rounded-lg ${isAct ? info.activeBg : "bg-gray-50"} flex items-center justify-center text-[10px] font-black ${info.text} mx-auto mb-1.5`}>{info.icon}</div>
+              <p className={`text-[11px] font-bold ${isAct ? info.text : "text-gray-600"}`}>{info.label}</p>
+              <p className={`text-[10px] mt-0.5 ${isAct ? info.text : "text-gray-400"}`}>{info.range}</p>
+              <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mt-2 mx-1">
+                <div className={`h-full rounded-full transition-all duration-700 ${isAct ? "bg-current" : "bg-gray-300"} ${info.text}`} style={{ width: `${pPct}%` }} />
+              </div>
+              <p className={`text-[11px] font-bold mt-1.5 ${isAct ? info.text : "text-gray-400"}`}>{pPct}%</p>
+            </Card>
+          );
+        })}
+      </div>
+
+      {/* Subject Progress */}
+      <Card className="px-4 py-3">
+        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Subject Progress</p>
+        <SubjectBar pct={ph.pct} color="bg-blue-500" label="Physics" detail={`${ph.done}/${ph.total}`} />
+        <SubjectBar pct={ch.pct} color="bg-emerald-500" label="Chemistry" detail={`${ch.done}/${ch.total}`} />
+        <SubjectBar pct={ma.pct} color="bg-violet-500" label="Maths" detail={`${ma.done}/${ma.total}`} />
+      </Card>
+
+      {/* Quick Links */}
+      <div className="grid grid-cols-2 gap-2.5">
+        {([
+          { v: "weekly" as View, title: `Week ${actW}`, sub: schedule[actW - 1]?.label, icon: "\uD83D\uDCC5", act: () => { setSelW(actW); setView("weekly"); } },
+          { v: "daily" as View, title: "Today", sub: new Date().toLocaleDateString("en-IN", { weekday: "long", month: "short", day: "numeric" }), icon: "\u2600\uFE0F", act: () => setView("daily") },
+          { v: "errors" as View, title: "Error Journal", sub: `${errors.length} logged`, icon: "\uD83D\uDCDD", act: () => setView("errors") },
+          { v: "revisit" as View, title: "Spaced Revisit", sub: `${getRevisitItems().filter(i => i.urgency === "overdue").length} overdue`, icon: "\uD83D\uDD04", act: () => setView("revisit") },
+        ]).map(item => (
+          <Card key={item.v} onClick={item.act} className="p-3.5">
+            <div className="flex items-start gap-2.5">
+              <span className="text-lg">{item.icon}</span>
+              <div>
+                <p className="text-[13px] font-semibold text-gray-800">{item.title}</p>
+                <p className="text-[11px] text-gray-400 mt-0.5">{item.sub}</p>
+              </div>
+            </div>
+          </Card>
+        ))}
+      </div>
+
+      {behind > 5 && (
+        <div className="bg-red-50 border border-red-100 rounded-2xl p-4 flex items-center justify-between">
+          <div>
+            <p className="text-sm font-bold text-red-700">{behind} tasks behind schedule</p>
+            <p className="text-[11px] text-red-500 mt-0.5">Use Adjust to catch up</p>
+          </div>
+          <button onClick={() => setView("adjust")} className="text-[11px] bg-red-600 text-white px-4 py-2 rounded-xl hover:bg-red-700 active:scale-95 font-semibold transition-all shadow-sm shadow-red-600/20">Adjust</button>
+        </div>
+      )}
+    </div>
+  );
+
+  const ScheduleView = () => (
+    <div className="space-y-2.5 animate-fade-in-up">
+      <SectionTitle>28-Week Schedule</SectionTitle>
+      {schedule.map((w, i) => {
+        const wp = wProg(w); const ic = w.week === actW; const info = PHASE_META[w.phase];
+        return (
+          <Card key={w.week} onClick={() => { setSelW(w.week); setView("weekly"); }} className={`p-3.5 ${ic ? "ring-2 ring-brand-500/20 border-brand-200" : ""}`} >
+            <div style={{ animationDelay: `${i * 30}ms` }} className="animate-fade-in-up">
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center gap-2">
+                  <Badge className={`${info.bg} ${info.text}`}>W{w.week}</Badge>
+                  {ic && <Badge className="bg-brand-600 text-white">Active</Badge>}
+                </div>
+                <span className="text-[10px] text-gray-400 font-medium">{w.startDate}</span>
+              </div>
+              <p className="text-[13px] font-semibold text-gray-800 mt-1">{w.label}</p>
+              <div className="flex items-center gap-2.5 mt-2.5">
+                <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full transition-all duration-700 ${wp.pct === 100 ? "bg-emerald-500" : "bg-brand-500"}`} style={{ width: `${wp.pct}%` }} />
+                </div>
+                <span className="text-[11px] font-semibold text-gray-500">{wp.done}/{wp.total}</span>
+              </div>
+            </div>
+          </Card>
+        );
+      })}
+    </div>
+  );
+
+  const WeeklyView = () => {
+    const w = schedule[selW - 1]; if (!w) return null;
+    const wp = wProg(w); const info = PHASE_META[w.phase];
+    return (
+      <div className="space-y-4 animate-fade-in-up">
+        <div className="flex items-center justify-between">
+          <button onClick={() => setSelW(Math.max(1, selW - 1))} className="w-9 h-9 rounded-xl bg-white border border-gray-100 hover:bg-gray-50 flex items-center justify-center active:scale-90 transition-all shadow-sm">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2.5" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+          </button>
+          <div className="text-center">
+            <Badge className={`${info.bg} ${info.text}`}>Week {w.week}</Badge>
+            <p className="text-[10px] text-gray-400 mt-1 font-medium">{w.startDate}</p>
+          </div>
+          <button onClick={() => setSelW(Math.min(28, selW + 1))} className="w-9 h-9 rounded-xl bg-white border border-gray-100 hover:bg-gray-50 flex items-center justify-center active:scale-90 transition-all shadow-sm">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2.5" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
+          </button>
+        </div>
+        <Card className="p-4">
+          <p className="text-[13px] font-bold text-gray-800">{w.label}</p>
+          <div className="flex items-center gap-3 mt-2.5">
+            <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+              <div className={`h-full rounded-full transition-all duration-700 ${wp.pct === 100 ? "bg-emerald-500" : "bg-brand-500"}`} style={{ width: `${wp.pct}%` }} />
+            </div>
+            <span className="text-[13px] font-bold text-gray-700">{wp.pct}%</span>
+          </div>
+        </Card>
+        {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(day => {
+          const tasks = w.days[day] || []; if (!tasks.length) return null;
+          return (
+            <div key={day}>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1 mb-2">{day}</p>
+              <div className="space-y-2">{tasks.map((t, i) => <TaskCard key={t.id} task={t} idx={i} />)}</div>
+            </div>
+          );
+        })}
+        <Card className="p-4">
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Notes &middot; Week {w.week}</p>
+          <textarea value={notes[`week-${w.week}`] || ""} onChange={e => updNote(`week-${w.week}`, e.target.value)} placeholder="Observations, tutor feedback, weak areas..."
+            className="w-full text-[13px] text-gray-700 border border-gray-100 rounded-xl p-3 h-24 resize-none focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-300 bg-gray-50/50 placeholder:text-gray-300 transition-all" />
+        </Card>
+      </div>
+    );
+  };
+
+  const DailyView = () => {
+    const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const today = dayNames[new Date().getDay()];
+    const w = schedule[actW - 1]; const ts = w.days[today] || [];
+    return (
+      <div className="space-y-4 animate-fade-in-up">
+        <div className="bg-gradient-to-br from-brand-600 via-brand-700 to-brand-800 rounded-2xl p-5 text-white shadow-xl shadow-brand-600/20 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-8 -mt-8" />
+          <p className="text-[11px] text-white/50 font-medium">{new Date().toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</p>
+          <h2 className="text-lg font-bold mt-1">Today's Plan</h2>
+          <p className="text-[11px] text-white/50 mt-0.5">Week {actW} &middot; {w.label}</p>
+        </div>
+        {ts.length === 0 ? (
+          <EmptyState icon="\uD83C\uDF1F" title="No tasks scheduled" subtitle="Enjoy your day off!" />
+        ) : (
+          <div className="space-y-2">{ts.map((t, i) => <TaskCard key={t.id} task={t} idx={i} />)}</div>
+        )}
+      </div>
+    );
+  };
+
+  const ErrorsView = () => {
+    const [showForm, setShowForm] = useState(false);
+    const [subj, setSubj] = useState<Subject>("physics");
+    const [chapInput, setChapInput] = useState("");
+    const [topicInput, setTopicInput] = useState("");
+    const [errType, setErrType] = useState<ErrorEntry["errorType"]>("concept");
+    const [wrongInput, setWrongInput] = useState("");
+    const [correctInput, setCorrectInput] = useState("");
+    const [filter, setFilter] = useState<"all" | Subject>("all");
+
+    const submit = () => {
+      if (!chapInput || !wrongInput) { flash("Fill required fields", 330); return; }
+      addError({ subject: subj, chapter: chapInput, topic: topicInput, errorType: errType, question: "", whatWentWrong: wrongInput, correctApproach: correctInput });
+      setShowForm(false); setChapInput(""); setTopicInput(""); setWrongInput(""); setCorrectInput("");
+    };
+    const filtered = filter === "all" ? errors : errors.filter(e => e.subject === filter);
+    const inputCls = "w-full text-[13px] text-gray-700 border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-300 bg-white placeholder:text-gray-300 transition-all";
+
+    return (
+      <div className="space-y-4 animate-fade-in-up">
+        <div className="flex items-center justify-between">
+          <SectionTitle>Error Journal</SectionTitle>
+          <button onClick={() => setShowForm(!showForm)} className={`text-[11px] px-4 py-2 rounded-xl font-semibold active:scale-95 transition-all ${showForm ? "bg-gray-100 text-gray-600" : "bg-red-600 text-white shadow-sm shadow-red-600/20 hover:bg-red-700"}`}>
+            {showForm ? "Cancel" : "+ Log Error"}
+          </button>
+        </div>
+
+        {showForm && (
+          <Card className="p-4 space-y-3 border-red-100 bg-red-50/30">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1.5">Subject</label>
+                <select value={subj} onChange={e => setSubj(e.target.value as Subject)} className={inputCls}>
+                  <option value="physics">Physics</option><option value="chemistry">Chemistry</option><option value="maths">Maths</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1.5">Error Type</label>
+                <select value={errType} onChange={e => setErrType(e.target.value as ErrorEntry["errorType"])} className={inputCls}>
+                  <option value="silly">Silly Mistake</option><option value="concept">Concept Gap</option><option value="time">Time Pressure</option><option value="formula">Formula Error</option><option value="reading">Misread Question</option>
+                </select>
+              </div>
+            </div>
+            <input value={chapInput} onChange={e => setChapInput(e.target.value)} placeholder="Chapter *" className={inputCls} />
+            <input value={topicInput} onChange={e => setTopicInput(e.target.value)} placeholder="Topic (optional)" className={inputCls} />
+            <textarea value={wrongInput} onChange={e => setWrongInput(e.target.value)} placeholder="What went wrong? *" className={`${inputCls} h-20 resize-none`} />
+            <textarea value={correctInput} onChange={e => setCorrectInput(e.target.value)} placeholder="Correct approach (optional)" className={`${inputCls} h-20 resize-none`} />
+            <button onClick={submit} className="w-full bg-red-600 text-white text-[13px] py-2.5 rounded-xl font-semibold hover:bg-red-700 active:scale-[0.98] transition-all shadow-sm shadow-red-600/20">Save Error</button>
+          </Card>
+        )}
+
+        {errors.length > 0 && (
+          <div className="flex gap-1.5 flex-wrap">
+            {(["all", "physics", "chemistry", "maths"] as const).map(f => (
+              <button key={f} onClick={() => setFilter(f)} className={`text-[11px] px-3 py-1.5 rounded-full font-semibold active:scale-95 transition-all ${filter === f ? "bg-brand-600 text-white shadow-sm" : "bg-gray-50 text-gray-500 hover:bg-gray-100"}`}>
+                {f === "all" ? `All (${errors.length})` : `${f.charAt(0).toUpperCase() + f.slice(1)} (${errors.filter(e => e.subject === f).length})`}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {filtered.length === 0 && !showForm && <EmptyState icon="\u2705" title="No errors logged" subtitle="Start logging mistakes to track patterns" />}
+
+        {filtered.map((err, i) => (
+          <Card key={err.id} className={`p-3.5 ${err.resolved ? "opacity-50" : ""}`}>
+            <div style={{ animationDelay: `${i * 40}ms` }} className="animate-fade-in-up flex items-start justify-between gap-3">
+              <div className="flex-1">
+                <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+                  <Badge className={`bg-gradient-to-r ${SUBJ[err.subject].gradient} text-white uppercase`}>{SUBJ[err.subject].icon}</Badge>
+                  <Badge className="bg-gray-50 text-gray-500 ring-1 ring-gray-200">{err.errorType}</Badge>
+                  {err.resolved && <Badge className="bg-emerald-50 text-emerald-600">Resolved</Badge>}
+                </div>
+                <p className="text-[13px] font-semibold text-gray-800">{err.chapter}{err.topic ? ` \u2014 ${err.topic}` : ""}</p>
+                <p className="text-[11px] text-red-500 mt-1.5 leading-relaxed"><b className="text-red-600">Wrong:</b> {err.whatWentWrong}</p>
+                {err.correctApproach && <p className="text-[11px] text-emerald-600 mt-1 leading-relaxed"><b>Correct:</b> {err.correctApproach}</p>}
+              </div>
+              <div className="flex flex-col gap-1.5 flex-shrink-0">
+                <button onClick={() => toggleErrorResolved(err.id)} className={`text-[11px] px-3 py-1.5 rounded-lg active:scale-95 font-semibold transition-all ${err.resolved ? "bg-amber-50 text-amber-600" : "bg-emerald-600 text-white shadow-sm"}`}>
+                  {err.resolved ? "Reopen" : "Resolve"}
+                </button>
+                <button onClick={() => deleteError(err.id)} className="text-[11px] text-gray-400 px-3 py-1.5 rounded-lg hover:bg-gray-50 active:scale-95 font-medium transition-all">Remove</button>
+              </div>
+            </div>
+          </Card>
+        ))}
+      </div>
+    );
+  };
+
+  const RevisitView = () => {
+    const items = getRevisitItems();
+    const urgencyStyle = { overdue: "border-red-200 bg-red-50/50", today: "border-amber-200 bg-amber-50/50", upcoming: "border-blue-100 bg-blue-50/30", done: "border-gray-100 bg-gray-50" };
+    const urgencyLabel = { overdue: "text-red-600 bg-red-50", today: "text-amber-600 bg-amber-50", upcoming: "text-blue-600 bg-blue-50", done: "text-gray-400 bg-gray-50" };
+    return (
+      <div className="space-y-4 animate-fade-in-up">
+        <SectionTitle>Spaced Repetition</SectionTitle>
+        <Card className="p-3.5 bg-brand-50/50 border-brand-100">
+          <p className="text-[12px] text-brand-700 leading-relaxed">Topics rated 1-2 stars are automatically scheduled for revisits at <b>+3</b>, <b>+7</b>, and <b>+14</b> days.</p>
+        </Card>
+        {items.length === 0 && <EmptyState icon="\uD83C\uDFAF" title="No weak topics" subtitle="Topics rated 1-2 stars will appear here" />}
+        {items.map(({ task, revisitDates, urgency }, i) => (
+          <Card key={task.id} className={`p-3.5 ${urgencyStyle[urgency]}`}>
+            <div style={{ animationDelay: `${i * 40}ms` }} className="animate-fade-in-up">
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <Badge className={`bg-gradient-to-r ${SUBJ[task.subject].gradient} text-white uppercase`}>{SUBJ[task.subject].icon}</Badge>
+                <Badge className={urgencyLabel[urgency]}>{urgency.toUpperCase()}</Badge>
+              </div>
+              <p className="text-[13px] font-semibold text-gray-800">{task.chapterName}</p>
+              <p className="text-[11px] text-gray-400 mt-0.5">{task.topic}</p>
+              <p className="text-[10px] text-gray-400 mt-2 font-medium">Revisit: {revisitDates.join(" \u2022 ")}</p>
+              {(urgency === "overdue" || urgency === "today") && (
+                <button onClick={() => markTask(task.id, "done", 4)} className="text-[11px] bg-emerald-600 text-white px-4 py-1.5 rounded-lg mt-2.5 hover:bg-emerald-700 active:scale-95 font-semibold transition-all shadow-sm shadow-emerald-600/20">Mark Revised</button>
+              )}
+            </div>
+          </Card>
+        ))}
+      </div>
+    );
+  };
+
+  const MonthlyView = () => {
+    const months = [{ n: "April", w: [1, 2, 3, 4] }, { n: "May", w: [5, 6, 7, 8] }, { n: "June", w: [9, 10, 11, 12] }, { n: "July", w: [13, 14, 15, 16] }, { n: "August", w: [17, 18, 19, 20] }, { n: "September", w: [21, 22, 23, 24] }, { n: "October", w: [25, 26, 27, 28] }];
+    return (
+      <div className="space-y-3 animate-fade-in-up">
+        <SectionTitle>Monthly Overview</SectionTitle>
+        {months.map(m => {
+          const mt = m.w.flatMap(wn => schedule[wn - 1] ? Object.values(schedule[wn - 1].days).flat() : []);
+          const md = mt.filter(t => progress[t.id]?.status === "done").length;
+          const pct = mt.length ? Math.round((md / mt.length) * 100) : 0;
+          return (
+            <Card key={m.n} className="p-4">
+              <div className="flex justify-between items-center mb-2.5">
+                <h3 className="text-[13px] font-bold text-gray-800">{m.n} 2026</h3>
+                <Badge className={`${pct >= 80 ? "bg-emerald-50 text-emerald-600" : pct >= 50 ? "bg-amber-50 text-amber-600" : "bg-gray-50 text-gray-500"}`}>{pct}%</Badge>
+              </div>
+              <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mb-3">
+                <div className={`h-full rounded-full transition-all duration-700 ${pct >= 80 ? "bg-emerald-500" : pct >= 50 ? "bg-amber-500" : "bg-gray-300"}`} style={{ width: `${pct}%` }} />
+              </div>
+              <div className="grid grid-cols-4 gap-1.5">
+                {m.w.map(wn => { const w = schedule[wn - 1]; if (!w) return null; const wp = wProg(w);
+                  return (
+                    <button key={wn} onClick={() => { setSelW(wn); setView("weekly"); }}
+                      className={`rounded-xl p-2 text-center border hover:shadow-sm active:scale-95 transition-all ${wn === actW ? "border-brand-300 bg-brand-50 ring-1 ring-brand-500/10" : "border-gray-100 bg-gray-50/50 hover:bg-gray-50"}`}>
+                      <p className="text-[10px] font-bold text-gray-500">W{wn}</p>
+                      <p className={`text-[11px] font-bold mt-0.5 ${wp.pct === 100 ? "text-emerald-600" : wn === actW ? "text-brand-600" : "text-gray-400"}`}>{wp.pct}%</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const AdjustView = () => {
+    const [markWeek, setMarkWeek] = useState(actW);
+    const [confirmReset, setConfirmReset] = useState(false);
+    const bulkAction = (action: "done" | "skip") => {
+      const w = schedule[markWeek - 1]; if (!w) return;
+      setProgress(prev => { const u = { ...prev }; Object.values(w.days).flat().forEach(t => { if (!u[t.id] || u[t.id].status === "pending") u[t.id] = { taskId: t.id, status: action === "done" ? "done" : "skipped", date: new Date().toISOString(), notes: "Bulk", rating: 0 }; }); saveData("shikhar-progress", u); return u; });
+      flash(`Week ${markWeek} \u2014 all ${action}`, 660);
+    };
+    const reset = () => {
+      if (!confirmReset) { setConfirmReset(true); return; }
+      setProgress({}); setNotes({}); setErrors([]);
+      saveData("shikhar-progress", {}); saveData("shikhar-notes", {}); saveData("shikhar-errors", []);
+      flash("All data reset", 330); setConfirmReset(false);
+    };
+    const inputCls = "w-full text-[13px] text-gray-700 border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-300 bg-white transition-all";
+
+    return (
+      <div className="space-y-4 animate-fade-in-up">
+        <SectionTitle>Adjust & Manage</SectionTitle>
+        <Card className="p-4">
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Bulk Actions</p>
+          <select value={markWeek} onChange={e => setMarkWeek(Number(e.target.value))} className={`${inputCls} mb-3`}>
+            {schedule.map(w => <option key={w.week} value={w.week}>Week {w.week} \u2014 {w.label.slice(0, 40)}</option>)}
+          </select>
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={() => bulkAction("done")} className="text-[12px] bg-emerald-600 text-white py-2.5 rounded-xl hover:bg-emerald-700 active:scale-[0.98] font-semibold transition-all shadow-sm shadow-emerald-600/20">Mark All Done</button>
+            <button onClick={() => bulkAction("skip")} className="text-[12px] bg-amber-500 text-white py-2.5 rounded-xl hover:bg-amber-600 active:scale-[0.98] font-semibold transition-all shadow-sm shadow-amber-500/20">Skip All</button>
+          </div>
+        </Card>
+        <Card className="p-4">
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Tutor Notes</p>
+          <textarea value={notes["tutor"] || ""} onChange={e => updNote("tutor", e.target.value)} placeholder="Tutor coordination, important notes..."
+            className={`${inputCls} h-28 resize-none`} />
+        </Card>
+        <Card className="p-4 border-red-100 bg-red-50/30">
+          <p className="text-[10px] font-bold text-red-400 uppercase tracking-widest mb-3">Danger Zone</p>
+          <button onClick={reset} className="text-[12px] bg-red-600 text-white px-5 py-2.5 rounded-xl hover:bg-red-700 active:scale-[0.98] font-semibold transition-all shadow-sm shadow-red-600/20">
+            {confirmReset ? "Confirm Reset \u2014 Click Again" : "Reset All Data"}
+          </button>
+          {confirmReset && <button onClick={() => setConfirmReset(false)} className="text-[11px] text-gray-400 ml-3 hover:text-gray-600">Cancel</button>}
+        </Card>
+      </div>
+    );
+  };
+
+  // ====== Navigation ======
+  const navItems: { v: View; label: string; icon: React.ReactNode }[] = [
+    { v: "dashboard", label: "Home", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> },
+    { v: "schedule", label: "Schedule", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg> },
+    { v: "weekly", label: "Week", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> },
+    { v: "daily", label: "Today", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> },
+    { v: "monthly", label: "Monthly", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg> },
+    { v: "errors", label: "Errors", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> },
+    { v: "revisit", label: "Revisit", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg> },
+    { v: "adjust", label: "Adjust", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> },
+  ];
+
+  return (
+    <div className="min-h-screen bg-gray-50/80">
+      {/* Header */}
+      <div className="bg-white border-b border-gray-200 sticky top-0" style={{ zIndex: 9999 }}>
+        <div className="max-w-2xl mx-auto px-4">
+          <div className="flex items-center justify-between h-14">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center text-white text-sm font-bold shadow-lg shadow-brand-600/20">S</div>
+              <div>
+                <h1 className="text-[14px] font-bold text-gray-900 leading-tight tracking-tight">Shikhar Prep Monitor</h1>
+                <p className="text-[10px] text-gray-400 font-medium">Managed by Shweta &middot; Week {actW}</p>
+              </div>
+            </div>
+            {behind > 5 && <div className="bg-red-50 text-red-600 text-[10px] font-bold px-2.5 py-1 rounded-full ring-1 ring-red-500/10">{behind} behind</div>}
+          </div>
+        </div>
+      </div>
+
+      {/* Toast */}
+      {toast && (
+        <div style={{ position: "fixed", top: 68, left: "50%", transform: "translateX(-50%)", zIndex: 99999 }} className="bg-gray-900 text-white text-[12px] font-medium px-5 py-2.5 rounded-xl shadow-2xl animate-toast">{toast}</div>
+      )}
+
+      {/* Content */}
+      <div className="max-w-2xl mx-auto px-4 pt-5" style={{ paddingBottom: 100 }}>
+        {view === "dashboard" && <DashboardView />}
+        {view === "schedule" && <ScheduleView />}
+        {view === "weekly" && <WeeklyView />}
+        {view === "daily" && <DailyView />}
+        {view === "errors" && <ErrorsView />}
+        {view === "revisit" && <RevisitView />}
+        {view === "monthly" && <MonthlyView />}
+        {view === "adjust" && <AdjustView />}
+      </div>
+
+      {/* Bottom Navigation */}
+      <nav style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 9999, background: "#ffffff", borderTop: "1px solid #e5e7eb", boxShadow: "0 -2px 10px rgba(0,0,0,0.06)", paddingBottom: "env(safe-area-inset-bottom, 4px)" }}>
+        <div className="max-w-2xl mx-auto px-1">
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-around", padding: "8px 0" }}>
+            {navItems.map(({ v, label, icon }) => (
+              <button key={v} onClick={() => { setView(v); if (v === "weekly") setSelW(actW); }}
+                style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, padding: "4px 6px", minWidth: 44, border: "none", background: "none", cursor: "pointer" }}
+                className={`rounded-xl transition-all active:scale-90 ${view === v ? "text-brand-600" : "text-gray-400 hover:text-gray-600"}`}>
+                <div className={`transition-all ${view === v ? "scale-110" : ""}`}>{icon}</div>
+                <span className={`text-[9px] font-semibold leading-none ${view === v ? "text-brand-600" : "text-gray-400"}`}>{label}</span>
+                {view === v && <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#4f46e5", marginTop: 2 }} />}
+              </button>
+            ))}
+          </div>
+        </div>
+      </nav>
+    </div>
+  );
+}
