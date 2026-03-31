@@ -1052,9 +1052,9 @@ export default function App() {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50/80">
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "#f8fafc", overflow: "hidden" }}>
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 sticky top-0" style={{ zIndex: 9999 }}>
+      <div style={{ flexShrink: 0, background: "#fff", borderBottom: "1px solid #e5e7eb", zIndex: 20 }}>
         <div className="max-w-2xl mx-auto px-4">
           <div className="flex items-center justify-between h-14">
             <div className="flex items-center gap-3">
@@ -1074,26 +1074,28 @@ export default function App() {
         <div style={{ position: "fixed", top: 68, left: "50%", transform: "translateX(-50%)", zIndex: 99999 }} className="bg-gray-900 text-white text-[12px] font-medium px-5 py-2.5 rounded-xl shadow-2xl animate-toast">{toast}</div>
       )}
 
-      {/* Content */}
-      <div className="max-w-2xl mx-auto px-4 pt-5" style={{ paddingBottom: 100 }}>
-        {view === "dashboard" && <DashboardView />}
-        {view === "schedule" && <ScheduleView />}
-        {view === "weekly" && <WeeklyView />}
-        {view === "daily" && <DailyView />}
-        {view === "errors" && <ErrorsView />}
-        {view === "revisit" && <RevisitView />}
-        {view === "monthly" && <MonthlyView />}
-        {view === "analytics" && <AnalyticsView />}
-        {view === "adjust" && <AdjustView />}
+      {/* Scrollable Content */}
+      <div style={{ flex: 1, overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
+        <div className="max-w-2xl mx-auto px-4 pt-5 pb-6">
+          {view === "dashboard" && <DashboardView />}
+          {view === "schedule" && <ScheduleView />}
+          {view === "weekly" && <WeeklyView />}
+          {view === "daily" && <DailyView />}
+          {view === "errors" && <ErrorsView />}
+          {view === "revisit" && <RevisitView />}
+          {view === "monthly" && <MonthlyView />}
+          {view === "analytics" && <AnalyticsView />}
+          {view === "adjust" && <AdjustView />}
+        </div>
       </div>
 
       {/* Bottom Navigation */}
-      <nav style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 9999, background: "#ffffff", borderTop: "1px solid #e5e7eb", boxShadow: "0 -2px 10px rgba(0,0,0,0.06)", paddingBottom: "env(safe-area-inset-bottom, 4px)" }}>
+      <nav style={{ flexShrink: 0, background: "#ffffff", borderTop: "1px solid #e5e7eb", boxShadow: "0 -2px 10px rgba(0,0,0,0.06)", zIndex: 20 }}>
         <div className="max-w-2xl mx-auto px-1">
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-around", padding: "8px 0" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-around", padding: "8px 0 12px" }}>
             {navItems.map(({ v, label, icon }) => (
               <button key={v} onClick={() => { setView(v); if (v === "weekly") setSelW(actW); }}
-                style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, padding: "4px 6px", minWidth: 44, border: "none", background: "none", cursor: "pointer" }}
+                style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, padding: "4px 6px", minWidth: 40, border: "none", background: "none", cursor: "pointer" }}
                 className={`rounded-xl transition-all active:scale-90 ${view === v ? "text-brand-600" : "text-gray-400 hover:text-gray-600"}`}>
                 <div className={`transition-all ${view === v ? "scale-110" : ""}`}>{icon}</div>
                 <span className={`text-[9px] font-semibold leading-none ${view === v ? "text-brand-600" : "text-gray-400"}`}>{label}</span>
