@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useRegisterSW } from "virtual:pwa-register/react";
 import { SYLLABUS_LINKS, SAMPLE_PAPERS, PYQ_LINKS, GENERAL_RESOURCES, FORMULAS, PYQ_PRIORITIES, TEST_PAPERS, TAG_COLORS, type LinkSection } from "./data";
 
 type Subject = "physics" | "chemistry" | "maths";
@@ -208,6 +209,48 @@ export default function App() {
   const [actW, setActW] = useState(1);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState("");
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [installPrompt, setInstallPrompt] = useState<Event | null>(null);
+  const [showInstallBanner, setShowInstallBanner] = useState(false);
+  const installDismissed = useRef(false);
+
+  // SW update handling
+  const { needRefresh, updateServiceWorker } = useRegisterSW({
+    onRegistered(r) { console.log("SW registered:", r); },
+    onRegisterError(e) { console.log("SW error:", e); },
+  });
+
+  // Online/offline detection
+  useEffect(() => {
+    const on = () => setIsOnline(true);
+    const off = () => setIsOnline(false);
+    window.addEventListener("online", on);
+    window.addEventListener("offline", off);
+    return () => { window.removeEventListener("online", on); window.removeEventListener("offline", off); };
+  }, []);
+
+  // Install prompt (Android Chrome)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      e.preventDefault();
+      setInstallPrompt(e);
+      if (!installDismissed.current) setShowInstallBanner(true);
+    };
+    window.addEventListener("beforeinstallprompt", handler);
+    return () => window.removeEventListener("beforeinstallprompt", handler);
+  }, []);
+
+  const handleInstall = async () => {
+    if (!installPrompt) return;
+    (installPrompt as any).prompt();
+    const { outcome } = await (installPrompt as any).userChoice;
+    if (outcome === "accepted") { setInstallPrompt(null); setShowInstallBanner(false); }
+  };
+
+  const dismissInstall = () => {
+    installDismissed.current = true;
+    setShowInstallBanner(false);
+  };
 
   useEffect(() => {
     setProgress(loadData("shikhar-progress", {}));
@@ -1549,6 +1592,38 @@ export default function App() {
       {/* Toast */}
       {toast && (
         <div style={{ position: "fixed", top: 68, left: "50%", transform: "translateX(-50%)", zIndex: 99999 }} className="bg-gray-900 text-white text-[16px] font-medium px-5 py-2.5 rounded-xl shadow-2xl animate-toast">{toast}</div>
+      )}
+
+      {/* Offline banner */}
+      {!isOnline && (
+        <div style={{ flexShrink: 0, background: "#f59e0b", zIndex: 18 }} className="px-4 py-2 flex items-center justify-center gap-2">
+          <span className="text-[13px] font-semibold text-white">You're offline — app works, data is saved locally</span>
+        </div>
+      )}
+
+      {/* SW update banner */}
+      {needRefresh && (
+        <div style={{ flexShrink: 0, background: "#4f46e5", zIndex: 18 }} className="px-4 py-2 flex items-center justify-between gap-2">
+          <span className="text-[13px] font-semibold text-white">New version available</span>
+          <button onClick={() => updateServiceWorker(true)} className="bg-white text-brand-600 text-[12px] font-bold px-3 py-1 rounded-lg active:scale-95">Update</button>
+        </div>
+      )}
+
+      {/* Install banner (Android Chrome) */}
+      {showInstallBanner && (
+        <div style={{ flexShrink: 0, background: "#fff", borderBottom: "1px solid #e5e7eb", zIndex: 18 }} className="px-4 py-2.5 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center text-white text-xs font-bold">S</div>
+            <div>
+              <p className="text-[13px] font-bold text-gray-800">Install Shikhar App</p>
+              <p className="text-[11px] text-gray-400">Add to home screen for offline use</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={dismissInstall} className="text-[12px] text-gray-400 px-2 py-1">Not now</button>
+            <button onClick={handleInstall} className="bg-brand-600 text-white text-[12px] font-bold px-3 py-1.5 rounded-xl active:scale-95">Install</button>
+          </div>
+        </div>
       )}
 
       {/* Scrollable Content */}
