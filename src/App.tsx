@@ -168,7 +168,7 @@ function Card({ children, className = "", onClick }: { children: React.ReactNode
 }
 
 function Badge({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <span className={`inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-md tracking-wide ${className}`}>{children}</span>;
+  return <span className={`inline-flex items-center text-[16px] font-semibold px-2 py-0.5 rounded-md tracking-wide ${className}`}>{children}</span>;
 }
 
 function ProgressRing({ pct, size = 48, stroke = 4, color = "#4f46e5" }: { pct: number; size?: number; stroke?: number; color?: string }) {
@@ -184,7 +184,7 @@ function ProgressRing({ pct, size = 48, stroke = 4, color = "#4f46e5" }: { pct: 
 }
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
-  return <h2 className="text-[15px] font-bold text-gray-900 tracking-tight">{children}</h2>;
+  return <h2 className="text-[17px] font-bold text-gray-900 tracking-tight">{children}</h2>;
 }
 
 function EmptyState({ icon, title, subtitle }: { icon: string; title: string; subtitle: string }) {
@@ -292,29 +292,29 @@ export default function App() {
             <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
               <Badge className={`bg-gradient-to-r ${sc.gradient} text-white uppercase`}>{sc.icon}</Badge>
               <Badge className={TYPE_BADGE[task.type] || TYPE_BADGE.buffer}>{task.type}</Badge>
-              {task.chapter > 0 && <span className="text-[10px] text-gray-400 font-medium">Ch.{task.chapter}</span>}
+              {task.chapter > 0 && <span className="text-[16px] text-gray-400 font-medium">Ch.{task.chapter}</span>}
             </div>
-            <p className={`text-[13px] font-semibold leading-snug ${isDone ? "line-through text-gray-400" : "text-gray-800"}`}>{task.topic}</p>
-            <p className="text-[11px] text-gray-400 mt-1">{task.hours}h &middot; {task.chapterName}</p>
+            <p className={`text-[17px] font-semibold leading-snug ${isDone ? "line-through text-gray-400" : "text-gray-800"}`}>{task.topic}</p>
+            <p className="text-[17px] text-gray-400 mt-1">{task.hours}h &middot; {task.chapterName}</p>
             {p?.rating > 0 && (
-              <div className="mt-1.5 flex gap-0.5">{[1, 2, 3, 4, 5].map(s => <span key={s} className={`text-[11px] ${s <= p.rating ? "text-amber-400" : "text-gray-200"}`}>{"\u2605"}</span>)}</div>
+              <div className="mt-1.5 flex gap-0.5">{[1, 2, 3, 4, 5].map(s => <span key={s} className={`text-[17px] ${s <= p.rating ? "text-amber-400" : "text-gray-200"}`}>{"\u2605"}</span>)}</div>
             )}
           </div>
           <div className="flex flex-col gap-1.5 flex-shrink-0">
             {!isDone && !isSkip && (
               <>
-                <button onClick={() => setShowR(!showR)} className="text-[11px] bg-brand-600 text-white px-3 py-1.5 rounded-lg hover:bg-brand-700 active:scale-95 font-semibold transition-all shadow-sm shadow-brand-600/20">Done</button>
-                <button onClick={() => markTask(task.id, "skipped")} className="text-[11px] text-gray-400 px-3 py-1.5 rounded-lg hover:bg-gray-100 active:scale-95 font-medium transition-all">Skip</button>
+                <button onClick={() => setShowR(!showR)} className="text-[17px] bg-brand-600 text-white px-3 py-1.5 rounded-lg hover:bg-brand-700 active:scale-95 font-semibold transition-all shadow-sm shadow-brand-600/20">Done</button>
+                <button onClick={() => markTask(task.id, "skipped")} className="text-[17px] text-gray-400 px-3 py-1.5 rounded-lg hover:bg-gray-100 active:scale-95 font-medium transition-all">Skip</button>
               </>
             )}
             {(isDone || isSkip) && (
-              <button onClick={() => markTask(task.id, "pending")} className="text-[11px] text-gray-400 px-3 py-1.5 rounded-lg hover:bg-gray-100 active:scale-95 font-medium transition-all">Undo</button>
+              <button onClick={() => markTask(task.id, "pending")} className="text-[17px] text-gray-400 px-3 py-1.5 rounded-lg hover:bg-gray-100 active:scale-95 font-medium transition-all">Undo</button>
             )}
           </div>
         </div>
         {showR && (
           <div className="mt-3 pt-3 border-t border-gray-200/60">
-            <p className="text-[11px] text-gray-500 mb-2 font-medium">How well did you understand?</p>
+            <p className="text-[17px] text-gray-500 mb-2 font-medium">How well did you understand?</p>
             <div className="flex gap-2">
               {[1, 2, 3, 4, 5].map(r => (
                 <button key={r} onClick={() => { markTask(task.id, "done", r); setShowR(false); }} className="w-9 h-9 rounded-xl bg-gray-50 hover:bg-gray-100 flex items-center justify-center text-lg active:scale-90 transition-all hover:shadow-sm">
@@ -331,12 +331,12 @@ export default function App() {
   // ====== Progress Bar ======
   const SubjectBar = ({ pct, color, label, detail }: { pct: number; color: string; label: string; detail: string }) => (
     <div className="flex items-center gap-3 py-2">
-      <span className="text-[12px] font-semibold text-gray-700 w-20">{label}</span>
+      <span className="text-[16px] font-semibold text-gray-700 w-20">{label}</span>
       <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
         <div className={`h-full rounded-full transition-all duration-1000 ease-out ${color}`} style={{ width: `${pct}%` }} />
       </div>
-      <span className="text-[11px] text-gray-400 font-medium w-12 text-right">{detail}</span>
-      <span className="text-[12px] font-bold text-gray-700 w-10 text-right">{pct}%</span>
+      <span className="text-[17px] text-gray-400 font-medium w-12 text-right">{detail}</span>
+      <span className="text-[16px] font-bold text-gray-700 w-10 text-right">{pct}%</span>
     </div>
   );
 
@@ -348,7 +348,7 @@ export default function App() {
       <Card className="p-4 pb-3">
         <div className="flex items-center justify-between mb-3">
           <div>
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Active Week</p>
+            <p className="text-[16px] font-bold text-gray-400 uppercase tracking-widest">Active Week</p>
             <p className="text-sm font-bold text-gray-800 mt-0.5">{schedule[actW - 1]?.label}</p>
           </div>
           <div className="bg-brand-50 text-brand-700 text-xs font-bold px-3 py-1 rounded-full">{schedule[actW - 1]?.startDate}</div>
@@ -360,7 +360,7 @@ export default function App() {
             const phaseWeeks = schedule.filter(w => w.phase === phase);
             return (
               <div key={phase}>
-                <p className={`text-[9px] font-bold uppercase tracking-widest mb-1.5 ${meta.text}`}>{meta.label}</p>
+                <p className={`text-[17px] font-bold uppercase tracking-widest mb-1.5 ${meta.text}`}>{meta.label}</p>
                 <div className="flex gap-1 flex-wrap">
                   {phaseWeeks.map(w => {
                     const isActive = w.week === actW;
@@ -368,7 +368,7 @@ export default function App() {
                     const done = wp.pct === 100;
                     return (
                       <button key={w.week} onClick={() => chgActW(w.week)}
-                        className={`relative w-[30px] h-[30px] rounded-lg text-[11px] font-bold transition-all duration-200 active:scale-90 flex items-center justify-center
+                        className={`relative w-[30px] h-[30px] rounded-lg text-[17px] font-bold transition-all duration-200 active:scale-90 flex items-center justify-center
                           ${isActive
                             ? "bg-brand-600 text-white shadow-md shadow-brand-600/30 scale-110"
                             : done
@@ -396,7 +396,7 @@ export default function App() {
         <div className="relative flex items-center justify-between mb-4">
           <div>
             <h2 className="text-base font-bold">Overall Progress</h2>
-            <p className="text-[11px] text-white/60 mt-0.5">28 Weeks &middot; Apr 6 - Oct 18, 2026</p>
+            <p className="text-[17px] text-white/60 mt-0.5">28 Weeks &middot; Apr 6 - Oct 18, 2026</p>
           </div>
           <div className="relative flex items-center justify-center">
             <ProgressRing pct={pctAll} size={56} stroke={5} color="#fff" />
@@ -406,7 +406,7 @@ export default function App() {
         <div className="h-2 bg-white/15 rounded-full overflow-hidden">
           <div className="h-full bg-white rounded-full transition-all duration-1000 ease-out" style={{ width: `${pctAll}%` }} />
         </div>
-        <div className="flex justify-between mt-3 text-[11px] text-white/50 font-medium">
+        <div className="flex justify-between mt-3 text-[17px] text-white/50 font-medium">
           <span>{doneT} completed</span><span>{skipT} skipped</span><span>{totalT - doneT - skipT} remaining</span>
         </div>
       </div>
@@ -420,13 +420,13 @@ export default function App() {
           const pPct = pTasks.length ? Math.round((pDone / pTasks.length) * 100) : 0;
           return (
             <Card key={p} onClick={() => { setSelW(info.sw); setView("weekly"); }} className={`p-3 text-center ${isAct ? `${info.activeBg} ${info.activeBorder} border-2 shadow-md` : ""}`}>
-              <div className={`w-7 h-7 rounded-lg ${isAct ? info.activeBg : "bg-gray-50"} flex items-center justify-center text-[10px] font-black ${info.text} mx-auto mb-1.5`}>{info.icon}</div>
-              <p className={`text-[11px] font-bold ${isAct ? info.text : "text-gray-600"}`}>{info.label}</p>
-              <p className={`text-[10px] mt-0.5 ${isAct ? info.text : "text-gray-400"}`}>{info.range}</p>
+              <div className={`w-7 h-7 rounded-lg ${isAct ? info.activeBg : "bg-gray-50"} flex items-center justify-center text-[16px] font-black ${info.text} mx-auto mb-1.5`}>{info.icon}</div>
+              <p className={`text-[17px] font-bold ${isAct ? info.text : "text-gray-600"}`}>{info.label}</p>
+              <p className={`text-[16px] mt-0.5 ${isAct ? info.text : "text-gray-400"}`}>{info.range}</p>
               <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mt-2 mx-1">
                 <div className={`h-full rounded-full transition-all duration-700 ${isAct ? "bg-current" : "bg-gray-300"} ${info.text}`} style={{ width: `${pPct}%` }} />
               </div>
-              <p className={`text-[11px] font-bold mt-1.5 ${isAct ? info.text : "text-gray-400"}`}>{pPct}%</p>
+              <p className={`text-[17px] font-bold mt-1.5 ${isAct ? info.text : "text-gray-400"}`}>{pPct}%</p>
             </Card>
           );
         })}
@@ -434,7 +434,7 @@ export default function App() {
 
       {/* Subject Progress */}
       <Card className="px-4 py-3">
-        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Subject Progress</p>
+        <p className="text-[16px] font-bold text-gray-400 uppercase tracking-widest mb-1">Subject Progress</p>
         <SubjectBar pct={ph.pct} color="bg-blue-500" label="Physics" detail={`${ph.done}/${ph.total}`} />
         <SubjectBar pct={ch.pct} color="bg-emerald-500" label="Chemistry" detail={`${ch.done}/${ch.total}`} />
         <SubjectBar pct={ma.pct} color="bg-violet-500" label="Maths" detail={`${ma.done}/${ma.total}`} />
@@ -452,8 +452,8 @@ export default function App() {
             <div className="flex items-start gap-2.5">
               <span className="text-lg">{item.icon}</span>
               <div>
-                <p className="text-[13px] font-semibold text-gray-800">{item.title}</p>
-                <p className="text-[11px] text-gray-400 mt-0.5">{item.sub}</p>
+                <p className="text-[17px] font-semibold text-gray-800">{item.title}</p>
+                <p className="text-[17px] text-gray-400 mt-0.5">{item.sub}</p>
               </div>
             </div>
           </Card>
@@ -464,9 +464,9 @@ export default function App() {
         <div className="bg-red-50 border border-red-100 rounded-2xl p-4 flex items-center justify-between">
           <div>
             <p className="text-sm font-bold text-red-700">{behind} tasks behind schedule</p>
-            <p className="text-[11px] text-red-500 mt-0.5">Use Adjust to catch up</p>
+            <p className="text-[17px] text-red-500 mt-0.5">Use Adjust to catch up</p>
           </div>
-          <button onClick={() => setView("adjust")} className="text-[11px] bg-red-600 text-white px-4 py-2 rounded-xl hover:bg-red-700 active:scale-95 font-semibold transition-all shadow-sm shadow-red-600/20">Adjust</button>
+          <button onClick={() => setView("adjust")} className="text-[17px] bg-red-600 text-white px-4 py-2 rounded-xl hover:bg-red-700 active:scale-95 font-semibold transition-all shadow-sm shadow-red-600/20">Adjust</button>
         </div>
       )}
     </div>
@@ -485,14 +485,14 @@ export default function App() {
                   <Badge className={`${info.bg} ${info.text}`}>W{w.week}</Badge>
                   {ic && <Badge className="bg-brand-600 text-white">Active</Badge>}
                 </div>
-                <span className="text-[10px] text-gray-400 font-medium">{w.startDate}</span>
+                <span className="text-[16px] text-gray-400 font-medium">{w.startDate}</span>
               </div>
-              <p className="text-[13px] font-semibold text-gray-800 mt-1">{w.label}</p>
+              <p className="text-[17px] font-semibold text-gray-800 mt-1">{w.label}</p>
               <div className="flex items-center gap-2.5 mt-2.5">
                 <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
                   <div className={`h-full rounded-full transition-all duration-700 ${wp.pct === 100 ? "bg-emerald-500" : "bg-brand-500"}`} style={{ width: `${wp.pct}%` }} />
                 </div>
-                <span className="text-[11px] font-semibold text-gray-500">{wp.done}/{wp.total}</span>
+                <span className="text-[17px] font-semibold text-gray-500">{wp.done}/{wp.total}</span>
               </div>
             </div>
           </Card>
@@ -512,34 +512,34 @@ export default function App() {
           </button>
           <div className="text-center">
             <Badge className={`${info.bg} ${info.text}`}>Week {w.week}</Badge>
-            <p className="text-[10px] text-gray-400 mt-1 font-medium">{w.startDate}</p>
+            <p className="text-[16px] text-gray-400 mt-1 font-medium">{w.startDate}</p>
           </div>
           <button onClick={() => setSelW(Math.min(28, selW + 1))} className="w-9 h-9 rounded-xl bg-white border border-gray-100 hover:bg-gray-50 flex items-center justify-center active:scale-90 transition-all shadow-sm">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2.5" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
           </button>
         </div>
         <Card className="p-4">
-          <p className="text-[13px] font-bold text-gray-800">{w.label}</p>
+          <p className="text-[17px] font-bold text-gray-800">{w.label}</p>
           <div className="flex items-center gap-3 mt-2.5">
             <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
               <div className={`h-full rounded-full transition-all duration-700 ${wp.pct === 100 ? "bg-emerald-500" : "bg-brand-500"}`} style={{ width: `${wp.pct}%` }} />
             </div>
-            <span className="text-[13px] font-bold text-gray-700">{wp.pct}%</span>
+            <span className="text-[17px] font-bold text-gray-700">{wp.pct}%</span>
           </div>
         </Card>
         {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(day => {
           const tasks = w.days[day] || []; if (!tasks.length) return null;
           return (
             <div key={day}>
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1 mb-2">{day}</p>
+              <p className="text-[16px] font-bold text-gray-400 uppercase tracking-widest px-1 mb-2">{day}</p>
               <div className="space-y-2">{tasks.map((t, i) => <TaskCard key={t.id} task={t} idx={i} />)}</div>
             </div>
           );
         })}
         <Card className="p-4">
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Notes &middot; Week {w.week}</p>
+          <p className="text-[16px] font-bold text-gray-400 uppercase tracking-widest mb-2">Notes &middot; Week {w.week}</p>
           <textarea value={notes[`week-${w.week}`] || ""} onChange={e => updNote(`week-${w.week}`, e.target.value)} placeholder="Observations, tutor feedback, weak areas..."
-            className="w-full text-[13px] text-gray-700 border border-gray-100 rounded-xl p-3 h-24 resize-none focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-300 bg-gray-50/50 placeholder:text-gray-300 transition-all" />
+            className="w-full text-[17px] text-gray-700 border border-gray-100 rounded-xl p-3 h-24 resize-none focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-300 bg-gray-50/50 placeholder:text-gray-300 transition-all" />
         </Card>
       </div>
     );
@@ -571,12 +571,41 @@ export default function App() {
     });
 
     // Tips based on task type
-    const getTip = (t: DayTask) => {
-      if (t.type === "study") return "Read theory first, then solve NCERT intext questions. Highlight key formulas.";
-      if (t.type === "practice") return "Attempt problems without looking at solutions. Time yourself. Mark doubts.";
-      if (t.type === "test") return "Simulate exam conditions. No phone. Strict time limit. Review mistakes after.";
-      if (t.type === "revision") return "Focus on weak areas from previous weeks. Use flashcards for formulas.";
-      return "Use this time to catch up on pending topics or rest.";
+    const getTipInstructions = (t: DayTask): string[] => {
+      if (t.type === "study") return [
+        "Read the NCERT theory chapter completely before attempting any problem — do not skip any paragraph.",
+        "Highlight every formula, definition, and key concept with a marker as you read.",
+        "Solve all NCERT in-text (within-chapter) questions immediately after reading each section.",
+        "Write a 5-line summary of the chapter in your own words at the end of the session.",
+        "If something is unclear, note it down and bring it to Shweta ma'am before the next session.",
+      ];
+      if (t.type === "practice") return [
+        "Close your notebook and attempt every problem from scratch — no peeking at solved examples.",
+        "Set a timer for each problem: 3 min for 1-mark, 5 min for 2-mark, 10 min for 5-mark questions.",
+        "Circle every problem you couldn't solve or took more than the allotted time — these are priority doubts.",
+        "After finishing, verify answers one-by-one and write down exactly where you went wrong.",
+        "Log any formula errors or concept mistakes in the Error Journal immediately.",
+      ];
+      if (t.type === "test") return [
+        "Keep your phone in another room and sit at a clean desk — treat this as the actual board exam.",
+        "Read the full question paper for 5 minutes before writing — plan which questions to attempt first.",
+        "Attempt high-confidence questions first; come back to difficult ones after securing easy marks.",
+        "Leave 10 minutes at the end strictly for revision and checking units/signs.",
+        "After the test, score yourself honestly using the marking scheme and log mistakes in Error Journal.",
+      ];
+      if (t.type === "revision") return [
+        "Pull out your previous notes and error journal for this chapter before starting.",
+        "Focus 70% of time on topics you rated 1–2 in confidence; only skim topics rated 4–5.",
+        "Re-derive all key formulas from scratch on a blank page — do not copy from notes.",
+        "Solve at least 5 PYQ questions from this chapter to check your revision depth.",
+        "Update your confidence rating for each topic after revision.",
+      ];
+      return [
+        "Use this buffer time to complete any pending tasks from earlier in the week.",
+        "If all tasks are done, do a quick 20-minute formula drill across all three subjects.",
+        "Review your Error Journal — pick 3 unresolved errors and work through them.",
+        "Rest properly if you have studied for 5+ hours today — sleep consolidates memory.",
+      ];
     };
 
     // Motivational based on day
@@ -597,27 +626,27 @@ export default function App() {
           <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-8 -mt-8" />
           <div className="absolute bottom-0 left-0 w-20 h-20 bg-white/5 rounded-full -ml-4 -mb-4" />
           <div className="relative">
-            <p className="text-[11px] text-white/50 font-medium">{now.toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</p>
+            <p className="text-[17px] text-white/50 font-medium">{now.toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</p>
             <h2 className="text-xl font-bold mt-1">Today's Plan</h2>
-            <p className="text-[11px] text-white/50 mt-0.5">Week {actW} &middot; {w.label}</p>
+            <p className="text-[17px] text-white/50 mt-0.5">Week {actW} &middot; {w.label}</p>
             {ts.length > 0 && (
               <div className="flex items-center gap-4 mt-3 pt-3 border-t border-white/10">
                 <div>
                   <p className="text-xl font-black">{totalHours}h</p>
-                  <p className="text-[9px] text-white/40 uppercase tracking-wider">Study Time</p>
+                  <p className="text-[17px] text-white/40 uppercase tracking-wider">Study Time</p>
                 </div>
                 <div>
                   <p className="text-xl font-black">{ts.length}</p>
-                  <p className="text-[9px] text-white/40 uppercase tracking-wider">Tasks</p>
+                  <p className="text-[17px] text-white/40 uppercase tracking-wider">Tasks</p>
                 </div>
                 <div>
                   <p className="text-xl font-black">{subjects.length}</p>
-                  <p className="text-[9px] text-white/40 uppercase tracking-wider">{subjects.length === 1 ? "Subject" : "Subjects"}</p>
+                  <p className="text-[17px] text-white/40 uppercase tracking-wider">{subjects.length === 1 ? "Subject" : "Subjects"}</p>
                 </div>
                 <div className="ml-auto">
                   <div className="relative flex items-center justify-center">
                     <ProgressRing pct={dayPct} size={44} stroke={4} color="#fff" />
-                    <span className="absolute text-[11px] font-black">{dayPct}%</span>
+                    <span className="absolute text-[17px] font-black">{dayPct}%</span>
                   </div>
                 </div>
               </div>
@@ -633,7 +662,7 @@ export default function App() {
             <Card className="p-3.5 bg-amber-50/50 border-amber-100">
               <div className="flex gap-2.5 items-start">
                 <span className="text-base mt-0.5">{"\uD83D\uDCA1"}</span>
-                <p className="text-[12px] text-gray-700 leading-relaxed">{dayMsg[today] || "Stay focused and consistent!"}</p>
+                <p className="text-[16px] text-gray-700 leading-relaxed">{dayMsg[today] || "Stay focused and consistent!"}</p>
               </div>
             </Card>
 
@@ -641,8 +670,8 @@ export default function App() {
             {doneCount > 0 && (
               <Card className="p-3.5">
                 <div className="flex items-center justify-between mb-2">
-                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Today's Progress</p>
-                  <span className="text-[11px] font-bold text-gray-600">{doneCount}/{ts.length} tasks &middot; {doneHoursToday}h done</span>
+                  <p className="text-[16px] font-bold text-gray-400 uppercase tracking-widest">Today's Progress</p>
+                  <span className="text-[17px] font-bold text-gray-600">{doneCount}/{ts.length} tasks &middot; {doneHoursToday}h done</span>
                 </div>
                 <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                   <div className={`h-full rounded-full transition-all duration-700 ${dayPct === 100 ? "bg-emerald-500" : "bg-brand-500"}`} style={{ width: `${dayPct}%` }} />
@@ -652,7 +681,7 @@ export default function App() {
 
             {/* Subject Focus */}
             <Card className="p-3.5">
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2.5">Today's Focus</p>
+              <p className="text-[16px] font-bold text-gray-400 uppercase tracking-widest mb-2.5">Today's Focus</p>
               <div className="flex gap-2">
                 {subjects.map(s => {
                   const sc = SUBJ[s];
@@ -661,8 +690,8 @@ export default function App() {
                   return (
                     <div key={s} className={`flex-1 rounded-xl p-2.5 ${sc.light} ${sc.border} border`}>
                       <Badge className={`bg-gradient-to-r ${sc.gradient} text-white uppercase`}>{sc.icon}</Badge>
-                      <p className="text-[12px] font-semibold text-gray-800 mt-1.5 capitalize">{s}</p>
-                      <p className="text-[10px] text-gray-400">{subHours}h &middot; {subTasks.length} {subTasks.length === 1 ? "task" : "tasks"}</p>
+                      <p className="text-[16px] font-semibold text-gray-800 mt-1.5 capitalize">{s}</p>
+                      <p className="text-[16px] text-gray-400">{subHours}h &middot; {subTasks.length} {subTasks.length === 1 ? "task" : "tasks"}</p>
                     </div>
                   );
                 })}
@@ -671,7 +700,7 @@ export default function App() {
 
             {/* Timetable */}
             <Card className="p-4">
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Suggested Timetable</p>
+              <p className="text-[16px] font-bold text-gray-400 uppercase tracking-widest mb-3">Suggested Timetable</p>
               <div className="space-y-0">
                 {timeSlots.map(({ time, task }, i) => {
                   const p_ = progress[task.id];
@@ -686,14 +715,14 @@ export default function App() {
                       </div>
                       {/* Content */}
                       <div className={`flex-1 pb-4 ${i < timeSlots.length - 1 ? "" : ""}`}>
-                        <p className={`text-[10px] font-bold uppercase tracking-wider ${isDone ? "text-emerald-500" : sc.text}`}>{time}</p>
-                        <p className={`text-[13px] font-semibold mt-0.5 ${isDone ? "line-through text-gray-400" : "text-gray-800"}`}>{task.topic}</p>
+                        <p className={`text-[16px] font-bold uppercase tracking-wider ${isDone ? "text-emerald-500" : sc.text}`}>{time}</p>
+                        <p className={`text-[17px] font-semibold mt-0.5 ${isDone ? "line-through text-gray-400" : "text-gray-800"}`}>{task.topic}</p>
                         <div className="flex items-center gap-1.5 mt-1">
                           <Badge className={`bg-gradient-to-r ${sc.gradient} text-white uppercase`}>{sc.icon}</Badge>
                           <Badge className={TYPE_BADGE[task.type]}>{task.type}</Badge>
-                          <span className="text-[10px] text-gray-400">{task.hours}h</span>
+                          <span className="text-[16px] text-gray-400">{task.hours}h</span>
                         </div>
-                        {isDone && <p className="text-[10px] text-emerald-500 font-semibold mt-1">{"\u2705"} Completed</p>}
+                        {isDone && <p className="text-[16px] text-emerald-500 font-semibold mt-1">{"\u2705"} Completed</p>}
                       </div>
                     </div>
                   );
@@ -703,22 +732,34 @@ export default function App() {
 
             {/* Detailed Task Cards */}
             <div>
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1 mb-2.5">Tasks &middot; Mark Progress</p>
+              <p className="text-[16px] font-bold text-gray-400 uppercase tracking-widest px-1 mb-2.5">Tasks &middot; Mark Progress</p>
               <div className="space-y-2">{ts.map((t, i) => <TaskCard key={t.id} task={t} idx={i} />)}</div>
             </div>
 
-            {/* Study Tips */}
-            <Card className="p-4 bg-brand-50/30 border-brand-100">
-              <p className="text-[10px] font-bold text-brand-500 uppercase tracking-widest mb-3">Study Tips for Today</p>
-              <div className="space-y-2.5">
+            {/* Study Instructions */}
+            <div className="rounded-2xl border-2 border-brand-400 bg-brand-50 overflow-hidden">
+              <div className="bg-brand-500 px-4 py-3 flex items-center gap-2">
+                <span className="text-white text-lg">📋</span>
+                <p className="text-[15px] font-black text-white uppercase tracking-widest">Study Instructions for Today</p>
+              </div>
+              <div className="p-4 space-y-4">
                 {ts.filter((t, i, arr) => arr.findIndex(x => x.type === t.type) === i).map(t => (
-                  <div key={t.type} className="flex gap-2.5 items-start">
-                    <Badge className={TYPE_BADGE[t.type]}>{t.type}</Badge>
-                    <p className="text-[11px] text-gray-600 leading-relaxed flex-1">{getTip(t)}</p>
+                  <div key={t.type}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <Badge className={`${TYPE_BADGE[t.type]} font-bold uppercase`}>{t.type} session</Badge>
+                    </div>
+                    <ol className="space-y-1.5 pl-1">
+                      {getTipInstructions(t).map((instr, i) => (
+                        <li key={i} className="flex gap-2.5 items-start">
+                          <span className="flex-shrink-0 w-5 h-5 rounded-full bg-brand-500 text-white text-[11px] font-bold flex items-center justify-center mt-0.5">{i + 1}</span>
+                          <p className="text-[14px] text-gray-700 leading-relaxed font-medium flex-1">{instr}</p>
+                        </li>
+                      ))}
+                    </ol>
                   </div>
                 ))}
               </div>
-            </Card>
+            </div>
 
             {/* Quick Actions */}
             <div className="grid grid-cols-2 gap-2.5">
@@ -726,8 +767,8 @@ export default function App() {
                 <div className="flex items-start gap-2.5">
                   <span className="text-base">{"\uD83D\uDCDD"}</span>
                   <div>
-                    <p className="text-[12px] font-semibold text-gray-800">Log Errors</p>
-                    <p className="text-[10px] text-gray-400 mt-0.5">Track mistakes from today</p>
+                    <p className="text-[16px] font-semibold text-gray-800">Log Errors</p>
+                    <p className="text-[16px] text-gray-400 mt-0.5">Track mistakes from today</p>
                   </div>
                 </div>
               </Card>
@@ -735,8 +776,8 @@ export default function App() {
                 <div className="flex items-start gap-2.5">
                   <span className="text-base">{"\uD83D\uDD04"}</span>
                   <div>
-                    <p className="text-[12px] font-semibold text-gray-800">Revisit</p>
-                    <p className="text-[10px] text-gray-400 mt-0.5">Check pending revisions</p>
+                    <p className="text-[16px] font-semibold text-gray-800">Revisit</p>
+                    <p className="text-[16px] text-gray-400 mt-0.5">Check pending revisions</p>
                   </div>
                 </div>
               </Card>
@@ -763,13 +804,13 @@ export default function App() {
       setShowForm(false); setChapInput(""); setTopicInput(""); setWrongInput(""); setCorrectInput("");
     };
     const filtered = filter === "all" ? errors : errors.filter(e => e.subject === filter);
-    const inputCls = "w-full text-[13px] text-gray-700 border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-300 bg-white placeholder:text-gray-300 transition-all";
+    const inputCls = "w-full text-[17px] text-gray-700 border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-300 bg-white placeholder:text-gray-300 transition-all";
 
     return (
       <div className="space-y-4 animate-fade-in-up">
         <div className="flex items-center justify-between">
           <SectionTitle>Error Journal</SectionTitle>
-          <button onClick={() => setShowForm(!showForm)} className={`text-[11px] px-4 py-2 rounded-xl font-semibold active:scale-95 transition-all ${showForm ? "bg-gray-100 text-gray-600" : "bg-red-600 text-white shadow-sm shadow-red-600/20 hover:bg-red-700"}`}>
+          <button onClick={() => setShowForm(!showForm)} className={`text-[17px] px-4 py-2 rounded-xl font-semibold active:scale-95 transition-all ${showForm ? "bg-gray-100 text-gray-600" : "bg-red-600 text-white shadow-sm shadow-red-600/20 hover:bg-red-700"}`}>
             {showForm ? "Cancel" : "+ Log Error"}
           </button>
         </div>
@@ -778,13 +819,13 @@ export default function App() {
           <Card className="p-4 space-y-3 border-red-100 bg-red-50/30">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1.5">Subject</label>
+                <label className="text-[16px] font-bold text-gray-500 uppercase tracking-wider block mb-1.5">Subject</label>
                 <select value={subj} onChange={e => setSubj(e.target.value as Subject)} className={inputCls}>
                   <option value="physics">Physics</option><option value="chemistry">Chemistry</option><option value="maths">Maths</option>
                 </select>
               </div>
               <div>
-                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1.5">Error Type</label>
+                <label className="text-[16px] font-bold text-gray-500 uppercase tracking-wider block mb-1.5">Error Type</label>
                 <select value={errType} onChange={e => setErrType(e.target.value as ErrorEntry["errorType"])} className={inputCls}>
                   <option value="silly">Silly Mistake</option><option value="concept">Concept Gap</option><option value="time">Time Pressure</option><option value="formula">Formula Error</option><option value="reading">Misread Question</option>
                 </select>
@@ -794,14 +835,14 @@ export default function App() {
             <input value={topicInput} onChange={e => setTopicInput(e.target.value)} placeholder="Topic (optional)" className={inputCls} />
             <textarea value={wrongInput} onChange={e => setWrongInput(e.target.value)} placeholder="What went wrong? *" className={`${inputCls} h-20 resize-none`} />
             <textarea value={correctInput} onChange={e => setCorrectInput(e.target.value)} placeholder="Correct approach (optional)" className={`${inputCls} h-20 resize-none`} />
-            <button onClick={submit} className="w-full bg-red-600 text-white text-[13px] py-2.5 rounded-xl font-semibold hover:bg-red-700 active:scale-[0.98] transition-all shadow-sm shadow-red-600/20">Save Error</button>
+            <button onClick={submit} className="w-full bg-red-600 text-white text-[17px] py-2.5 rounded-xl font-semibold hover:bg-red-700 active:scale-[0.98] transition-all shadow-sm shadow-red-600/20">Save Error</button>
           </Card>
         )}
 
         {errors.length > 0 && (
           <div className="flex gap-1.5 flex-wrap">
             {(["all", "physics", "chemistry", "maths"] as const).map(f => (
-              <button key={f} onClick={() => setFilter(f)} className={`text-[11px] px-3 py-1.5 rounded-full font-semibold active:scale-95 transition-all ${filter === f ? "bg-brand-600 text-white shadow-sm" : "bg-gray-50 text-gray-500 hover:bg-gray-100"}`}>
+              <button key={f} onClick={() => setFilter(f)} className={`text-[17px] px-3 py-1.5 rounded-full font-semibold active:scale-95 transition-all ${filter === f ? "bg-brand-600 text-white shadow-sm" : "bg-gray-50 text-gray-500 hover:bg-gray-100"}`}>
                 {f === "all" ? `All (${errors.length})` : `${f.charAt(0).toUpperCase() + f.slice(1)} (${errors.filter(e => e.subject === f).length})`}
               </button>
             ))}
@@ -819,15 +860,15 @@ export default function App() {
                   <Badge className="bg-gray-50 text-gray-500 ring-1 ring-gray-200">{err.errorType}</Badge>
                   {err.resolved && <Badge className="bg-emerald-50 text-emerald-600">Resolved</Badge>}
                 </div>
-                <p className="text-[13px] font-semibold text-gray-800">{err.chapter}{err.topic ? ` \u2014 ${err.topic}` : ""}</p>
-                <p className="text-[11px] text-red-500 mt-1.5 leading-relaxed"><b className="text-red-600">Wrong:</b> {err.whatWentWrong}</p>
-                {err.correctApproach && <p className="text-[11px] text-emerald-600 mt-1 leading-relaxed"><b>Correct:</b> {err.correctApproach}</p>}
+                <p className="text-[17px] font-semibold text-gray-800">{err.chapter}{err.topic ? ` \u2014 ${err.topic}` : ""}</p>
+                <p className="text-[17px] text-red-500 mt-1.5 leading-relaxed"><b className="text-red-600">Wrong:</b> {err.whatWentWrong}</p>
+                {err.correctApproach && <p className="text-[17px] text-emerald-600 mt-1 leading-relaxed"><b>Correct:</b> {err.correctApproach}</p>}
               </div>
               <div className="flex flex-col gap-1.5 flex-shrink-0">
-                <button onClick={() => toggleErrorResolved(err.id)} className={`text-[11px] px-3 py-1.5 rounded-lg active:scale-95 font-semibold transition-all ${err.resolved ? "bg-amber-50 text-amber-600" : "bg-emerald-600 text-white shadow-sm"}`}>
+                <button onClick={() => toggleErrorResolved(err.id)} className={`text-[17px] px-3 py-1.5 rounded-lg active:scale-95 font-semibold transition-all ${err.resolved ? "bg-amber-50 text-amber-600" : "bg-emerald-600 text-white shadow-sm"}`}>
                   {err.resolved ? "Reopen" : "Resolve"}
                 </button>
-                <button onClick={() => deleteError(err.id)} className="text-[11px] text-gray-400 px-3 py-1.5 rounded-lg hover:bg-gray-50 active:scale-95 font-medium transition-all">Remove</button>
+                <button onClick={() => deleteError(err.id)} className="text-[17px] text-gray-400 px-3 py-1.5 rounded-lg hover:bg-gray-50 active:scale-95 font-medium transition-all">Remove</button>
               </div>
             </div>
           </Card>
@@ -844,7 +885,7 @@ export default function App() {
       <div className="space-y-4 animate-fade-in-up">
         <SectionTitle>Spaced Repetition</SectionTitle>
         <Card className="p-3.5 bg-brand-50/50 border-brand-100">
-          <p className="text-[12px] text-brand-700 leading-relaxed">Topics rated 1-2 stars are automatically scheduled for revisits at <b>+3</b>, <b>+7</b>, and <b>+14</b> days.</p>
+          <p className="text-[16px] text-brand-700 leading-relaxed">Topics rated 1-2 stars are automatically scheduled for revisits at <b>+3</b>, <b>+7</b>, and <b>+14</b> days.</p>
         </Card>
         {items.length === 0 && <EmptyState icon="\uD83C\uDFAF" title="No weak topics" subtitle="Topics rated 1-2 stars will appear here" />}
         {items.map(({ task, revisitDates, urgency }, i) => (
@@ -854,11 +895,11 @@ export default function App() {
                 <Badge className={`bg-gradient-to-r ${SUBJ[task.subject].gradient} text-white uppercase`}>{SUBJ[task.subject].icon}</Badge>
                 <Badge className={urgencyLabel[urgency]}>{urgency.toUpperCase()}</Badge>
               </div>
-              <p className="text-[13px] font-semibold text-gray-800">{task.chapterName}</p>
-              <p className="text-[11px] text-gray-400 mt-0.5">{task.topic}</p>
-              <p className="text-[10px] text-gray-400 mt-2 font-medium">Revisit: {revisitDates.join(" \u2022 ")}</p>
+              <p className="text-[17px] font-semibold text-gray-800">{task.chapterName}</p>
+              <p className="text-[17px] text-gray-400 mt-0.5">{task.topic}</p>
+              <p className="text-[16px] text-gray-400 mt-2 font-medium">Revisit: {revisitDates.join(" \u2022 ")}</p>
               {(urgency === "overdue" || urgency === "today") && (
-                <button onClick={() => markTask(task.id, "done", 4)} className="text-[11px] bg-emerald-600 text-white px-4 py-1.5 rounded-lg mt-2.5 hover:bg-emerald-700 active:scale-95 font-semibold transition-all shadow-sm shadow-emerald-600/20">Mark Revised</button>
+                <button onClick={() => markTask(task.id, "done", 4)} className="text-[17px] bg-emerald-600 text-white px-4 py-1.5 rounded-lg mt-2.5 hover:bg-emerald-700 active:scale-95 font-semibold transition-all shadow-sm shadow-emerald-600/20">Mark Revised</button>
               )}
             </div>
           </Card>
@@ -879,7 +920,7 @@ export default function App() {
           return (
             <Card key={m.n} className="p-4">
               <div className="flex justify-between items-center mb-2.5">
-                <h3 className="text-[13px] font-bold text-gray-800">{m.n} 2026</h3>
+                <h3 className="text-[17px] font-bold text-gray-800">{m.n} 2026</h3>
                 <Badge className={`${pct >= 80 ? "bg-emerald-50 text-emerald-600" : pct >= 50 ? "bg-amber-50 text-amber-600" : "bg-gray-50 text-gray-500"}`}>{pct}%</Badge>
               </div>
               <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mb-3">
@@ -890,8 +931,8 @@ export default function App() {
                   return (
                     <button key={wn} onClick={() => { setSelW(wn); setView("weekly"); }}
                       className={`rounded-xl p-2 text-center border hover:shadow-sm active:scale-95 transition-all ${wn === actW ? "border-brand-300 bg-brand-50 ring-1 ring-brand-500/10" : "border-gray-100 bg-gray-50/50 hover:bg-gray-50"}`}>
-                      <p className="text-[10px] font-bold text-gray-500">W{wn}</p>
-                      <p className={`text-[11px] font-bold mt-0.5 ${wp.pct === 100 ? "text-emerald-600" : wn === actW ? "text-brand-600" : "text-gray-400"}`}>{wp.pct}%</p>
+                      <p className="text-[16px] font-bold text-gray-500">W{wn}</p>
+                      <p className={`text-[17px] font-bold mt-0.5 ${wp.pct === 100 ? "text-emerald-600" : wn === actW ? "text-brand-600" : "text-gray-400"}`}>{wp.pct}%</p>
                     </button>
                   );
                 })}
@@ -982,9 +1023,9 @@ export default function App() {
         <div className={`rounded-2xl p-4 border ${statusBg} ${completionRate >= 80 ? "border-emerald-200" : completionRate >= 50 ? "border-amber-200" : "border-red-200"}`}>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Current Status</p>
+              <p className="text-[16px] font-bold uppercase tracking-widest text-gray-400">Current Status</p>
               <p className={`text-lg font-black mt-0.5 ${statusColor}`}>{statusLabel}</p>
-              <p className="text-[11px] text-gray-500 mt-1">
+              <p className="text-[17px] text-gray-500 mt-1">
                 {prepStarted
                   ? `You should be at Week ${currentWeekNum} by now`
                   : `Prep starts Apr 6, 2026 — ${Math.abs(daysSinceStart)} days to go`}
@@ -1001,29 +1042,29 @@ export default function App() {
         <div className="grid grid-cols-2 gap-2.5">
           <Card className="p-3.5 text-center">
             <p className="text-2xl font-black text-brand-600">{actualDone}</p>
-            <p className="text-[10px] text-gray-400 font-semibold mt-0.5">Tasks Completed</p>
-            <p className="text-[10px] text-gray-300 mt-0.5">of {plannedCount} planned</p>
+            <p className="text-[16px] text-gray-400 font-semibold mt-0.5">Tasks Completed</p>
+            <p className="text-[16px] text-gray-300 mt-0.5">of {plannedCount} planned</p>
           </Card>
           <Card className="p-3.5 text-center">
             <p className={`text-2xl font-black ${pending > 10 ? "text-red-500" : pending > 0 ? "text-amber-500" : "text-emerald-500"}`}>{pending}</p>
-            <p className="text-[10px] text-gray-400 font-semibold mt-0.5">Tasks Pending</p>
-            <p className="text-[10px] text-gray-300 mt-0.5">{actualSkipped} skipped</p>
+            <p className="text-[16px] text-gray-400 font-semibold mt-0.5">Tasks Pending</p>
+            <p className="text-[16px] text-gray-300 mt-0.5">{actualSkipped} skipped</p>
           </Card>
           <Card className="p-3.5 text-center">
             <p className="text-2xl font-black text-blue-600">{doneHours}h</p>
-            <p className="text-[10px] text-gray-400 font-semibold mt-0.5">Hours Invested</p>
-            <p className="text-[10px] text-gray-300 mt-0.5">of {plannedHours}h planned</p>
+            <p className="text-[16px] text-gray-400 font-semibold mt-0.5">Hours Invested</p>
+            <p className="text-[16px] text-gray-300 mt-0.5">of {plannedHours}h planned</p>
           </Card>
           <Card className="p-3.5 text-center">
             <p className="text-2xl font-black text-violet-600">{totalProgramHours - doneHours}h</p>
-            <p className="text-[10px] text-gray-400 font-semibold mt-0.5">Hours Remaining</p>
-            <p className="text-[10px] text-gray-300 mt-0.5">of {totalProgramHours}h total</p>
+            <p className="text-[16px] text-gray-400 font-semibold mt-0.5">Hours Remaining</p>
+            <p className="text-[16px] text-gray-300 mt-0.5">of {totalProgramHours}h total</p>
           </Card>
         </div>
 
         {/* Subject-wise Gap Analysis */}
         <Card className="p-4">
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Subject Gap Analysis</p>
+          <p className="text-[16px] font-bold text-gray-400 uppercase tracking-widest mb-3">Subject Gap Analysis</p>
           {subjectGap.map(s => {
             const sc = SUBJ[s.subject];
             const behindPct = s.planned > 0 ? 100 - s.pct : 0;
@@ -1032,11 +1073,11 @@ export default function App() {
                 <div className="flex items-center justify-between mb-1.5">
                   <div className="flex items-center gap-2">
                     <Badge className={`bg-gradient-to-r ${sc.gradient} text-white uppercase`}>{sc.icon}</Badge>
-                    <span className="text-[12px] font-semibold text-gray-700 capitalize">{s.subject}</span>
+                    <span className="text-[16px] font-semibold text-gray-700 capitalize">{s.subject}</span>
                   </div>
                   <div className="text-right">
-                    <span className="text-[12px] font-bold text-gray-700">{s.done}/{s.planned}</span>
-                    {s.gap > 0 && <span className="text-[10px] text-red-500 font-semibold ml-1.5">{s.gap} behind</span>}
+                    <span className="text-[16px] font-bold text-gray-700">{s.done}/{s.planned}</span>
+                    {s.gap > 0 && <span className="text-[16px] text-red-500 font-semibold ml-1.5">{s.gap} behind</span>}
                   </div>
                 </div>
                 {/* Stacked bar: done (green) + skipped (gray) + gap (red) */}
@@ -1048,9 +1089,9 @@ export default function App() {
                   )}
                 </div>
                 <div className="flex gap-3 mt-1">
-                  <span className="text-[9px] text-gray-400 flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />Done {s.pct}%</span>
-                  {s.skipped > 0 && <span className="text-[9px] text-gray-400 flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-gray-300 inline-block" />Skipped {s.skipped}</span>}
-                  {s.gap > 0 && <span className="text-[9px] text-red-400 flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-200 inline-block" />Gap {s.gap}</span>}
+                  <span className="text-[17px] text-gray-400 flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />Done {s.pct}%</span>
+                  {s.skipped > 0 && <span className="text-[17px] text-gray-400 flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-gray-300 inline-block" />Skipped {s.skipped}</span>}
+                  {s.gap > 0 && <span className="text-[17px] text-red-400 flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-200 inline-block" />Gap {s.gap}</span>}
                 </div>
               </div>
             );
@@ -1059,18 +1100,18 @@ export default function App() {
 
         {/* Task Type Breakdown */}
         <Card className="p-4">
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">By Task Type</p>
+          <p className="text-[16px] font-bold text-gray-400 uppercase tracking-widest mb-3">By Task Type</p>
           <div className="grid grid-cols-2 gap-2.5">
             {typeGap.map(t => (
               <div key={t.type} className="bg-gray-50 rounded-xl p-3">
                 <div className="flex items-center justify-between mb-1.5">
                   <Badge className={TYPE_BADGE[t.type]}>{t.type}</Badge>
-                  <span className="text-[11px] font-bold text-gray-600">{t.pct}%</span>
+                  <span className="text-[17px] font-bold text-gray-600">{t.pct}%</span>
                 </div>
                 <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
                   <div className={`h-full rounded-full transition-all duration-700 ${t.pct >= 80 ? "bg-emerald-500" : t.pct >= 50 ? "bg-amber-500" : "bg-red-400"}`} style={{ width: `${t.pct}%` }} />
                 </div>
-                <p className="text-[10px] text-gray-400 mt-1">{t.done}/{t.planned} done</p>
+                <p className="text-[16px] text-gray-400 mt-1">{t.done}/{t.planned} done</p>
               </div>
             ))}
           </div>
@@ -1079,18 +1120,18 @@ export default function App() {
         {/* Weekly Trend */}
         {weeklyTrend.length > 0 && (
           <Card className="p-4">
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Weekly Completion Trend</p>
+            <p className="text-[16px] font-bold text-gray-400 uppercase tracking-widest mb-3">Weekly Completion Trend</p>
             <div className="flex items-end gap-1.5" style={{ height: 100 }}>
               {weeklyTrend.map(w => (
                 <div key={w.week} className="flex-1 flex flex-col items-center gap-1">
-                  <span className="text-[9px] font-bold text-gray-500">{w.pct}%</span>
+                  <span className="text-[17px] font-bold text-gray-500">{w.pct}%</span>
                   <div className="w-full bg-gray-100 rounded-t-lg flex-1 relative" style={{ minHeight: 8 }}>
                     <div
                       className={`absolute bottom-0 left-0 right-0 rounded-t-lg transition-all duration-700 ${w.pct >= 80 ? "bg-emerald-500" : w.pct >= 50 ? "bg-amber-400" : w.pct > 0 ? "bg-red-400" : "bg-gray-200"}`}
                       style={{ height: `${Math.max(4, w.pct)}%` }}
                     />
                   </div>
-                  <span className="text-[9px] text-gray-400 font-medium">W{w.week}</span>
+                  <span className="text-[17px] text-gray-400 font-medium">W{w.week}</span>
                 </div>
               ))}
             </div>
@@ -1100,16 +1141,16 @@ export default function App() {
         {/* Missed Chapters */}
         {uniqueMissed.length > 0 && (
           <Card className="p-4 border-red-100 bg-red-50/30">
-            <p className="text-[10px] font-bold text-red-400 uppercase tracking-widest mb-3">
+            <p className="text-[16px] font-bold text-red-400 uppercase tracking-widest mb-3">
               Missed Chapters ({uniqueMissed.length})
             </p>
-            <p className="text-[11px] text-gray-500 mb-3">These study chapters were planned but not completed yet:</p>
+            <p className="text-[17px] text-gray-500 mb-3">These study chapters were planned but not completed yet:</p>
             <div className="space-y-2">
               {uniqueMissed.map((ch, i) => (
                 <div key={`${ch.subject}-${ch.name}-${i}`} className="flex items-center gap-2 bg-white rounded-xl p-2.5 border border-red-100">
                   <Badge className={`bg-gradient-to-r ${SUBJ[ch.subject].gradient} text-white uppercase`}>{SUBJ[ch.subject].icon}</Badge>
                   <div className="flex-1 min-w-0">
-                    <p className="text-[12px] font-semibold text-gray-800 truncate">Ch.{ch.chapter} {ch.name}</p>
+                    <p className="text-[16px] font-semibold text-gray-800 truncate">Ch.{ch.chapter} {ch.name}</p>
                   </div>
                 </div>
               ))}
@@ -1119,12 +1160,12 @@ export default function App() {
 
         {/* Recommendations */}
         <Card className="p-4 bg-brand-50/30 border-brand-100">
-          <p className="text-[10px] font-bold text-brand-500 uppercase tracking-widest mb-3">Recommendations</p>
+          <p className="text-[16px] font-bold text-brand-500 uppercase tracking-widest mb-3">Recommendations</p>
           <div className="space-y-2.5">
             {weakest && weakest.gap > 0 && (
               <div className="flex gap-2.5 items-start">
                 <span className="text-sm mt-0.5">{"\u26A0\uFE0F"}</span>
-                <p className="text-[12px] text-gray-700 leading-relaxed">
+                <p className="text-[16px] text-gray-700 leading-relaxed">
                   <b className="text-gray-900 capitalize">{weakest.subject}</b> is your weakest subject with {weakest.gap} pending tasks ({weakest.pct}% completion). Prioritize this in your next study sessions.
                 </p>
               </div>
@@ -1132,7 +1173,7 @@ export default function App() {
             {typeGap.find(t => t.type === "test" && t.pct < 60) && (
               <div className="flex gap-2.5 items-start">
                 <span className="text-sm mt-0.5">{"\uD83D\uDCDD"}</span>
-                <p className="text-[12px] text-gray-700 leading-relaxed">
+                <p className="text-[16px] text-gray-700 leading-relaxed">
                   Weekly tests completion is low. Regular testing is essential for exam readiness &mdash; don't skip test days.
                 </p>
               </div>
@@ -1140,7 +1181,7 @@ export default function App() {
             {uniqueMissed.length > 3 && (
               <div className="flex gap-2.5 items-start">
                 <span className="text-sm mt-0.5">{"\uD83D\uDCD6"}</span>
-                <p className="text-[12px] text-gray-700 leading-relaxed">
+                <p className="text-[16px] text-gray-700 leading-relaxed">
                   You have {uniqueMissed.length} missed study chapters. Consider using buffer weeks to catch up on the most weighted chapters first.
                 </p>
               </div>
@@ -1148,7 +1189,7 @@ export default function App() {
             {completionRate >= 80 && (
               <div className="flex gap-2.5 items-start">
                 <span className="text-sm mt-0.5">{"\uD83C\uDF1F"}</span>
-                <p className="text-[12px] text-gray-700 leading-relaxed">
+                <p className="text-[16px] text-gray-700 leading-relaxed">
                   Great progress! Maintain this pace and focus on converting weak-rated topics (Spaced Revisit) into strong ones.
                 </p>
               </div>
@@ -1156,7 +1197,7 @@ export default function App() {
             {!prepStarted && (
               <div className="flex gap-2.5 items-start">
                 <span className="text-sm mt-0.5">{"\uD83D\uDE80"}</span>
-                <p className="text-[12px] text-gray-700 leading-relaxed">
+                <p className="text-[16px] text-gray-700 leading-relaxed">
                   Preparation hasn't started yet. Use this time to set up your study environment and review Class 11 fundamentals.
                 </p>
               </div>
@@ -1164,7 +1205,7 @@ export default function App() {
             {doneHours > 0 && (
               <div className="flex gap-2.5 items-start">
                 <span className="text-sm mt-0.5">{"\u23F1\uFE0F"}</span>
-                <p className="text-[12px] text-gray-700 leading-relaxed">
+                <p className="text-[16px] text-gray-700 leading-relaxed">
                   Average pace: <b>{plannedCount > 0 ? (doneHours / Math.max(1, prepStarted ? currentWeekNum : 1)).toFixed(1) : 0}h/week</b>. Target is {(totalProgramHours / 28).toFixed(1)}h/week to finish on time.
                 </p>
               </div>
@@ -1191,24 +1232,24 @@ export default function App() {
         <div className="flex gap-1.5">
           {tabs.map(t => (
             <button key={t.k} onClick={() => setTab(t.k)}
-              className={`flex-1 text-[11px] py-2 rounded-xl font-semibold transition-all active:scale-95 ${tab === t.k ? "bg-brand-600 text-white shadow-sm" : "bg-gray-50 text-gray-500 hover:bg-gray-100"}`}>
+              className={`flex-1 text-[17px] py-2 rounded-xl font-semibold transition-all active:scale-95 ${tab === t.k ? "bg-brand-600 text-white shadow-sm" : "bg-gray-50 text-gray-500 hover:bg-gray-100"}`}>
               {t.label}
             </button>
           ))}
         </div>
         {tabData[tab]?.map((section, i) => (
           <Card key={i} className="p-4">
-            <p className="text-[12px] font-bold text-gray-800 mb-2.5">{section.icon} {section.title}</p>
+            <p className="text-[16px] font-bold text-gray-800 mb-2.5">{section.icon} {section.title}</p>
             <div className="space-y-2">
               {section.links.map((link, j) => (
                 <div key={j} className="flex items-center gap-2">
                   {link.url !== "#" ? (
-                    <a href={link.url} target="_blank" rel="noopener noreferrer" className="text-[12px] text-brand-600 hover:text-brand-800 underline underline-offset-2 flex-1">{link.label}</a>
+                    <a href={link.url} target="_blank" rel="noopener noreferrer" className="text-[16px] text-brand-600 hover:text-brand-800 underline underline-offset-2 flex-1">{link.label}</a>
                   ) : (
-                    <span className="text-[12px] text-gray-600 flex-1">{link.label}</span>
+                    <span className="text-[16px] text-gray-600 flex-1">{link.label}</span>
                   )}
                   {link.tag && (
-                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${TAG_COLORS[link.tag]?.bg || "bg-gray-100"} ${TAG_COLORS[link.tag]?.text || "text-gray-600"}`}>{link.tag}</span>
+                    <span className={`text-[17px] font-bold px-1.5 py-0.5 rounded ${TAG_COLORS[link.tag]?.bg || "bg-gray-100"} ${TAG_COLORS[link.tag]?.text || "text-gray-600"}`}>{link.tag}</span>
                   )}
                 </div>
               ))}
@@ -1233,16 +1274,16 @@ export default function App() {
         <div className="flex gap-1.5">
           {(["all", "physics", "chemistry", "maths"] as const).map(s => (
             <button key={s} onClick={() => setSubFilter(s)}
-              className={`flex-1 text-[11px] py-2 rounded-xl font-semibold transition-all active:scale-95 ${subFilter === s ? "bg-brand-600 text-white shadow-sm" : "bg-gray-50 text-gray-500 hover:bg-gray-100"}`}>
+              className={`flex-1 text-[17px] py-2 rounded-xl font-semibold transition-all active:scale-95 ${subFilter === s ? "bg-brand-600 text-white shadow-sm" : "bg-gray-50 text-gray-500 hover:bg-gray-100"}`}>
               {s === "all" ? "All" : s.charAt(0).toUpperCase() + s.slice(1)}
             </button>
           ))}
         </div>
         {/* PYQ Priority Legend */}
         <div className="flex gap-2 items-center flex-wrap">
-          <span className="text-[9px] text-gray-400 font-semibold">PYQ Priority:</span>
+          <span className="text-[17px] text-gray-400 font-semibold">PYQ Priority:</span>
           {(["VERY HIGH", "HIGH", "MEDIUM"] as const).map(p => (
-            <span key={p} className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${TAG_COLORS[p].bg} ${TAG_COLORS[p].text}`}>{p}</span>
+            <span key={p} className={`text-[17px] font-bold px-1.5 py-0.5 rounded ${TAG_COLORS[p].bg} ${TAG_COLORS[p].text}`}>{p}</span>
           ))}
         </div>
         {/* Chapter Accordion */}
@@ -1261,8 +1302,8 @@ export default function App() {
                 <div className="flex items-center gap-2">
                   <Badge className={`bg-gradient-to-r ${sc.gradient} text-white uppercase`}>{sc.icon}</Badge>
                   <div>
-                    <p className="text-[12px] font-semibold text-gray-800">Ch.{chNum} {chName}</p>
-                    <p className="text-[10px] text-gray-400">{chFormulas.length} formulas</p>
+                    <p className="text-[16px] font-semibold text-gray-800">Ch.{chNum} {chName}</p>
+                    <p className="text-[16px] text-gray-400">{chFormulas.length} formulas</p>
                   </div>
                 </div>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" className={`transition-transform ${isOpen ? "rotate-180" : ""}`}><path d="M6 9l6 6 6-6"/></svg>
@@ -1273,20 +1314,20 @@ export default function App() {
                   <div className="space-y-1.5">
                     {chFormulas.map((f, i) => (
                       <div key={i} className="flex items-baseline justify-between gap-2 py-1.5 border-b border-gray-50 last:border-0">
-                        <span className="text-[11px] text-gray-500 font-medium">{f.name}</span>
-                        <span className="text-[12px] font-mono font-semibold text-gray-800 text-right">{f.formula}</span>
+                        <span className="text-[17px] text-gray-500 font-medium">{f.name}</span>
+                        <span className="text-[16px] font-mono font-semibold text-gray-800 text-right">{f.formula}</span>
                       </div>
                     ))}
                   </div>
                   {/* PYQ Priorities */}
                   {chPriorities.length > 0 && (
                     <div>
-                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">PYQ Exam Priority</p>
+                      <p className="text-[16px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">PYQ Exam Priority</p>
                       {chPriorities.map((p, i) => (
                         <div key={i} className="flex items-center gap-2 py-1.5">
-                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${TAG_COLORS[p.priority].bg} ${TAG_COLORS[p.priority].text}`}>{p.priority}</span>
-                          <span className="text-[11px] text-gray-700 flex-1">{p.topic}</span>
-                          <span className="text-[10px] text-gray-400">{p.marks}m</span>
+                          <span className={`text-[17px] font-bold px-1.5 py-0.5 rounded ${TAG_COLORS[p.priority].bg} ${TAG_COLORS[p.priority].text}`}>{p.priority}</span>
+                          <span className="text-[17px] text-gray-700 flex-1">{p.topic}</span>
+                          <span className="text-[16px] text-gray-400">{p.marks}m</span>
                         </div>
                       ))}
                     </div>
@@ -1334,28 +1375,28 @@ export default function App() {
         <Card className="p-3.5 bg-amber-50/50 border-amber-100">
           <div className="flex gap-2 items-start">
             <span className="text-sm mt-0.5">{"\uD83D\uDD12"}</span>
-            <p className="text-[11px] text-gray-600 leading-relaxed"><b>For Shweta only.</b> Score each question using the marking rubric below.</p>
+            <p className="text-[17px] text-gray-600 leading-relaxed"><b>For Shweta only.</b> Score each question using the marking rubric below.</p>
           </div>
         </Card>
         {/* Selectors */}
         <div className="grid grid-cols-2 gap-2.5">
           <div>
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Week</p>
+            <p className="text-[16px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Week</p>
             <div className="flex gap-1.5">
               {[1, 2].map(w => (
                 <button key={w} onClick={() => { setSelWeek(w); setScores({}); setSaved(false); }}
-                  className={`flex-1 text-[12px] py-2 rounded-xl font-semibold transition-all active:scale-95 ${selWeek === w ? "bg-brand-600 text-white" : "bg-gray-50 text-gray-500"}`}>
+                  className={`flex-1 text-[16px] py-2 rounded-xl font-semibold transition-all active:scale-95 ${selWeek === w ? "bg-brand-600 text-white" : "bg-gray-50 text-gray-500"}`}>
                   Week {w}
                 </button>
               ))}
             </div>
           </div>
           <div>
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Subject</p>
+            <p className="text-[16px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Subject</p>
             <div className="flex gap-1">
               {(["physics", "chemistry", "maths"] as Subject[]).map(s => (
                 <button key={s} onClick={() => { setSelSubj(s); setScores({}); setSaved(false); }}
-                  className={`flex-1 text-[10px] py-2 rounded-xl font-semibold transition-all active:scale-95 ${selSubj === s ? `bg-gradient-to-r ${SUBJ[s].gradient} text-white` : "bg-gray-50 text-gray-500"}`}>
+                  className={`flex-1 text-[16px] py-2 rounded-xl font-semibold transition-all active:scale-95 ${selSubj === s ? `bg-gradient-to-r ${SUBJ[s].gradient} text-white` : "bg-gray-50 text-gray-500"}`}>
                   {SUBJ[s].icon}
                 </button>
               ))}
@@ -1366,20 +1407,20 @@ export default function App() {
         <Card className={`p-4 ${pct >= 80 ? "bg-emerald-50/50 border-emerald-100" : pct >= 50 ? "bg-amber-50/50 border-amber-100" : "bg-gray-50"}`}>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Total Score</p>
+              <p className="text-[16px] font-bold text-gray-400 uppercase tracking-widest">Total Score</p>
               <p className="text-2xl font-black text-gray-800 mt-0.5">{totalScored} <span className="text-sm text-gray-400 font-medium">/ {totalMax}</span></p>
             </div>
             <div className="relative flex items-center justify-center">
               <ProgressRing pct={pct} size={56} stroke={5} color={pct >= 80 ? "#10b981" : pct >= 50 ? "#f59e0b" : "#6b7280"} />
-              <span className="absolute text-[13px] font-black text-gray-700">{pct}%</span>
+              <span className="absolute text-[17px] font-black text-gray-700">{pct}%</span>
             </div>
           </div>
-          {saved && <p className="text-[10px] text-emerald-600 font-semibold mt-2">{"\u2705"} Saved</p>}
+          {saved && <p className="text-[16px] text-emerald-600 font-semibold mt-2">{"\u2705"} Saved</p>}
         </Card>
         {/* Questions by Section */}
         {paper.sections.map(section => (
           <Card key={section.name} className="p-4">
-            <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-3">{section.name}</p>
+            <p className="text-[17px] font-bold text-gray-500 uppercase tracking-wider mb-3">{section.name}</p>
             <div className="space-y-3">
               {section.questions.map(q => {
                 const qKey = `q${q.num}`;
@@ -1388,14 +1429,14 @@ export default function App() {
                   <div key={q.num} className="border-b border-gray-50 pb-3 last:border-0 last:pb-0">
                     <div className="flex items-start justify-between gap-2 mb-1.5">
                       <div className="flex-1">
-                        <p className="text-[12px] font-semibold text-gray-800">Q{q.num}. {q.topic}</p>
-                        <p className="text-[10px] text-gray-400 mt-0.5">Max: {q.marks} marks</p>
+                        <p className="text-[16px] font-semibold text-gray-800">Q{q.num}. {q.topic}</p>
+                        <p className="text-[16px] text-gray-400 mt-0.5">Max: {q.marks} marks</p>
                       </div>
                       {/* Score Input */}
                       <div className="flex gap-1 flex-shrink-0">
                         {Array.from({ length: q.marks + 1 }, (_, i) => i).map(score => (
                           <button key={score} onClick={() => { setScores(prev => ({ ...prev, [qKey]: score })); setSaved(false); }}
-                            className={`w-7 h-7 rounded-lg text-[11px] font-bold transition-all active:scale-90 ${qScore === score
+                            className={`w-7 h-7 rounded-lg text-[17px] font-bold transition-all active:scale-90 ${qScore === score
                               ? score === q.marks ? "bg-emerald-600 text-white" : score === 0 ? "bg-red-500 text-white" : "bg-brand-600 text-white"
                               : "bg-gray-50 text-gray-400 hover:bg-gray-100"
                             }`}>
@@ -1407,7 +1448,7 @@ export default function App() {
                     {/* Rubric */}
                     <div className="space-y-0.5">
                       {q.rubric.map((r, ri) => (
-                        <p key={ri} className="text-[10px] text-gray-400 pl-2 border-l-2 border-gray-100">{r}</p>
+                        <p key={ri} className="text-[16px] text-gray-400 pl-2 border-l-2 border-gray-100">{r}</p>
                       ))}
                     </div>
                   </div>
@@ -1418,10 +1459,10 @@ export default function App() {
         ))}
         {/* Actions */}
         <div className="grid grid-cols-2 gap-2.5">
-          <button onClick={saveEval} className="bg-brand-600 text-white text-[12px] py-3 rounded-xl font-semibold hover:bg-brand-700 active:scale-[0.98] transition-all shadow-sm shadow-brand-600/20">
+          <button onClick={saveEval} className="bg-brand-600 text-white text-[16px] py-3 rounded-xl font-semibold hover:bg-brand-700 active:scale-[0.98] transition-all shadow-sm shadow-brand-600/20">
             Save Evaluation
           </button>
-          <button onClick={() => setView("errors")} className="bg-gray-50 text-gray-600 text-[12px] py-3 rounded-xl font-semibold hover:bg-gray-100 active:scale-[0.98] transition-all">
+          <button onClick={() => setView("errors")} className="bg-gray-50 text-gray-600 text-[16px] py-3 rounded-xl font-semibold hover:bg-gray-100 active:scale-[0.98] transition-all">
             Log Errors {"\u2192"}
           </button>
         </div>
@@ -1443,32 +1484,32 @@ export default function App() {
       saveData("shikhar-progress", {}); saveData("shikhar-notes", {}); saveData("shikhar-errors", []);
       flash("All data reset", 330); setConfirmReset(false);
     };
-    const inputCls = "w-full text-[13px] text-gray-700 border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-300 bg-white transition-all";
+    const inputCls = "w-full text-[17px] text-gray-700 border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-300 bg-white transition-all";
 
     return (
       <div className="space-y-4 animate-fade-in-up">
         <SectionTitle>Adjust & Manage</SectionTitle>
         <Card className="p-4">
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Bulk Actions</p>
+          <p className="text-[16px] font-bold text-gray-400 uppercase tracking-widest mb-3">Bulk Actions</p>
           <select value={markWeek} onChange={e => setMarkWeek(Number(e.target.value))} className={`${inputCls} mb-3`}>
             {schedule.map(w => <option key={w.week} value={w.week}>Week {w.week} \u2014 {w.label.slice(0, 40)}</option>)}
           </select>
           <div className="grid grid-cols-2 gap-2">
-            <button onClick={() => bulkAction("done")} className="text-[12px] bg-emerald-600 text-white py-2.5 rounded-xl hover:bg-emerald-700 active:scale-[0.98] font-semibold transition-all shadow-sm shadow-emerald-600/20">Mark All Done</button>
-            <button onClick={() => bulkAction("skip")} className="text-[12px] bg-amber-500 text-white py-2.5 rounded-xl hover:bg-amber-600 active:scale-[0.98] font-semibold transition-all shadow-sm shadow-amber-500/20">Skip All</button>
+            <button onClick={() => bulkAction("done")} className="text-[16px] bg-emerald-600 text-white py-2.5 rounded-xl hover:bg-emerald-700 active:scale-[0.98] font-semibold transition-all shadow-sm shadow-emerald-600/20">Mark All Done</button>
+            <button onClick={() => bulkAction("skip")} className="text-[16px] bg-amber-500 text-white py-2.5 rounded-xl hover:bg-amber-600 active:scale-[0.98] font-semibold transition-all shadow-sm shadow-amber-500/20">Skip All</button>
           </div>
         </Card>
         <Card className="p-4">
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Tutor Notes</p>
+          <p className="text-[16px] font-bold text-gray-400 uppercase tracking-widest mb-2">Tutor Notes</p>
           <textarea value={notes["tutor"] || ""} onChange={e => updNote("tutor", e.target.value)} placeholder="Tutor coordination, important notes..."
             className={`${inputCls} h-28 resize-none`} />
         </Card>
         <Card className="p-4 border-red-100 bg-red-50/30">
-          <p className="text-[10px] font-bold text-red-400 uppercase tracking-widest mb-3">Danger Zone</p>
-          <button onClick={reset} className="text-[12px] bg-red-600 text-white px-5 py-2.5 rounded-xl hover:bg-red-700 active:scale-[0.98] font-semibold transition-all shadow-sm shadow-red-600/20">
+          <p className="text-[16px] font-bold text-red-400 uppercase tracking-widest mb-3">Danger Zone</p>
+          <button onClick={reset} className="text-[16px] bg-red-600 text-white px-5 py-2.5 rounded-xl hover:bg-red-700 active:scale-[0.98] font-semibold transition-all shadow-sm shadow-red-600/20">
             {confirmReset ? "Confirm Reset \u2014 Click Again" : "Reset All Data"}
           </button>
-          {confirmReset && <button onClick={() => setConfirmReset(false)} className="text-[11px] text-gray-400 ml-3 hover:text-gray-600">Cancel</button>}
+          {confirmReset && <button onClick={() => setConfirmReset(false)} className="text-[17px] text-gray-400 ml-3 hover:text-gray-600">Cancel</button>}
         </Card>
       </div>
     );
@@ -1496,18 +1537,18 @@ export default function App() {
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center text-white text-sm font-bold shadow-lg shadow-brand-600/20">S</div>
               <div>
-                <h1 className="text-[14px] font-bold text-gray-900 leading-tight tracking-tight">Shikhar Prep Monitor</h1>
-                <p className="text-[10px] text-gray-400 font-medium">Managed by Shweta &middot; Week {actW}</p>
+                <h1 className="text-[16px] font-bold text-gray-900 leading-tight tracking-tight">Shikhar Prep Monitor</h1>
+                <p className="text-[16px] text-gray-400 font-medium">Managed by Shweta &middot; Week {actW}</p>
               </div>
             </div>
-            {behind > 5 && <div className="bg-red-50 text-red-600 text-[10px] font-bold px-2.5 py-1 rounded-full ring-1 ring-red-500/10">{behind} behind</div>}
+            {behind > 5 && <div className="bg-red-50 text-red-600 text-[16px] font-bold px-2.5 py-1 rounded-full ring-1 ring-red-500/10">{behind} behind</div>}
           </div>
         </div>
       </div>
 
       {/* Toast */}
       {toast && (
-        <div style={{ position: "fixed", top: 68, left: "50%", transform: "translateX(-50%)", zIndex: 99999 }} className="bg-gray-900 text-white text-[12px] font-medium px-5 py-2.5 rounded-xl shadow-2xl animate-toast">{toast}</div>
+        <div style={{ position: "fixed", top: 68, left: "50%", transform: "translateX(-50%)", zIndex: 99999 }} className="bg-gray-900 text-white text-[16px] font-medium px-5 py-2.5 rounded-xl shadow-2xl animate-toast">{toast}</div>
       )}
 
       {/* Scrollable Content */}
@@ -1537,7 +1578,7 @@ export default function App() {
                 style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, padding: "4px 6px", minWidth: 40, border: "none", background: "none", cursor: "pointer" }}
                 className={`rounded-xl transition-all active:scale-90 ${view === v ? "text-brand-600" : "text-gray-400 hover:text-gray-600"}`}>
                 <div className={`transition-all ${view === v ? "scale-110" : ""}`}>{icon}</div>
-                <span className={`text-[9px] font-semibold leading-none ${view === v ? "text-brand-600" : "text-gray-400"}`}>{label}</span>
+                <span className={`text-[17px] font-semibold leading-none ${view === v ? "text-brand-600" : "text-gray-400"}`}>{label}</span>
                 {view === v && <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#4f46e5", marginTop: 2 }} />}
               </button>
             ))}
