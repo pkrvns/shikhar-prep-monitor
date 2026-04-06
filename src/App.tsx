@@ -1578,7 +1578,7 @@ export default function App() {
                 style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, padding: "4px 6px", minWidth: 40, border: "none", background: "none", cursor: "pointer" }}
                 className={`rounded-xl transition-all active:scale-90 ${view === v ? "text-brand-600" : "text-gray-400 hover:text-gray-600"}`}>
                 <div className={`transition-all ${view === v ? "scale-110" : ""}`}>{icon}</div>
-                <span className={`text-[17px] font-semibold leading-none ${view === v ? "text-brand-600" : "text-gray-400"}`}>{label}</span>
+                <span className={`text-[10px] font-semibold leading-none ${view === v ? "text-brand-600" : "text-gray-400"}`}>{label}</span>
                 {view === v && <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#4f46e5", marginTop: 2 }} />}
               </button>
             ))}
