@@ -1,64 +1,84 @@
-// Vercel Edge Function — Claude API proxy.
+// Vercel Serverless Function (Node runtime) — Claude API proxy.
 // The Anthropic API key is read from process.env.ANTHROPIC_API_KEY (set in
 // Vercel → Project → Settings → Environment Variables). It NEVER appears in
 // the client bundle or in source control.
 //
 // Client posts: { model?, system?, messages, max_tokens? }
 // Returns Anthropic JSON pass-through.
+//
+// Switched off the Edge runtime (which has a hard 25-second wall on Hobby
+// and was killing long multi-sub-topic doubt prompts with HTTP 504
+// FUNCTION_INVOCATION_TIMEOUT). Node runtime supports up to 60 s on Hobby
+// via the maxDuration export below — enough headroom for the slowest
+// Claude responses we're sending.
 
-export const config = { runtime: "edge" };
+import type { IncomingMessage, ServerResponse } from "node:http";
+
+export const config = {
+  // 12 MB body cap covers ~3 photos at 3-4 MB each.
+  api: { bodyParser: { sizeLimit: "12mb" } },
+};
+export const maxDuration = 60;
 
 const DEFAULT_MODEL = "claude-opus-4-5";
 const DEFAULT_MAX_TOKENS = 2048;
-const MAX_BODY_BYTES = 12 * 1024 * 1024; // 12 MB hard cap (covers ~3 photos at 3-4 MB each)
 
-export default async function handler(req: Request): Promise<Response> {
+// Vercel Node functions inject a parsed `body` onto the request when the
+// content-type is JSON, but it's not in the standard IncomingMessage type.
+type VercelNodeRequest = IncomingMessage & { body?: unknown };
+
+export default async function handler(
+  req: VercelNodeRequest,
+  res: ServerResponse,
+): Promise<void> {
+  // CORS preflight
   if (req.method === "OPTIONS") {
-    return new Response(null, {
-      status: 204,
-      headers: {
-        "access-control-allow-origin": "*",
-        "access-control-allow-methods": "POST, OPTIONS",
-        "access-control-allow-headers": "content-type",
-      },
-    });
+    res.statusCode = 204;
+    res.setHeader("access-control-allow-origin", "*");
+    res.setHeader("access-control-allow-methods", "POST, OPTIONS");
+    res.setHeader("access-control-allow-headers", "content-type");
+    res.end();
+    return;
   }
 
   if (req.method !== "POST") {
-    return jsonResponse({ error: "method_not_allowed" }, 405);
+    sendJson(res, 405, { error: "method_not_allowed" });
+    return;
   }
 
-  // Edge runtime: process.env is available for env vars set in Vercel.
-  const apiKey =
-    typeof process !== "undefined" && process.env ? process.env.ANTHROPIC_API_KEY : undefined;
+  const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    return jsonResponse(
-      { error: { type: "missing_api_key", message: "ANTHROPIC_API_KEY env var not set on Vercel." } },
-      500,
-    );
+    sendJson(res, 500, {
+      error: { type: "missing_api_key", message: "ANTHROPIC_API_KEY env var not set on Vercel." },
+    });
+    return;
   }
 
-  // Size check
-  const lenHeader = req.headers.get("content-length");
-  if (lenHeader && Number(lenHeader) > MAX_BODY_BYTES) {
-    return jsonResponse({ error: "payload_too_large", limit_bytes: MAX_BODY_BYTES }, 413);
+  // Vercel auto-parses JSON bodies for Node functions. If for any reason
+  // it didn't (e.g. wrong content-type), parse manually from the raw stream.
+  let body: { model?: string; system?: string; messages?: unknown; max_tokens?: number } | null = null;
+  if (req.body && typeof req.body === "object") {
+    body = req.body as typeof body;
+  } else {
+    try {
+      const raw = await readRawBody(req);
+      body = raw ? JSON.parse(raw) : null;
+    } catch {
+      sendJson(res, 400, { error: "invalid_json" });
+      return;
+    }
   }
 
-  let body: {
-    model?: string;
-    system?: string;
-    messages?: unknown;
-    max_tokens?: number;
-  };
-  try {
-    body = await req.json();
-  } catch {
-    return jsonResponse({ error: "invalid_json" }, 400);
+  if (!body || !Array.isArray(body.messages) || body.messages.length === 0) {
+    sendJson(res, 400, { error: "missing_messages" });
+    return;
   }
 
-  if (!Array.isArray(body.messages) || body.messages.length === 0) {
-    return jsonResponse({ error: "missing_messages" }, 400);
-  }
+  // Defensive 60s wall on the upstream call. Vercel will already kill us at
+  // maxDuration, but giving fetch its own AbortSignal lets us return a
+  // friendlier error message before that happens.
+  const ac = new AbortController();
+  const upstreamTimeout = setTimeout(() => ac.abort(), 55_000);
 
   let upstream: Response;
   try {
@@ -75,18 +95,22 @@ export default async function handler(req: Request): Promise<Response> {
         system: body.system,
         messages: body.messages,
       }),
+      signal: ac.signal,
     });
   } catch (e) {
-    return jsonResponse(
-      {
-        error: {
-          type: "upstream_fetch_failed",
-          message: e instanceof Error ? e.message : "Network error contacting Anthropic",
-        },
+    clearTimeout(upstreamTimeout);
+    const aborted = (e as Error)?.name === "AbortError";
+    sendJson(res, 504, {
+      error: {
+        type: aborted ? "upstream_timeout" : "upstream_fetch_failed",
+        message: aborted
+          ? "Claude took longer than 55 seconds to respond. Try a shorter prompt or fewer sub-topics at once."
+          : e instanceof Error ? e.message : "Network error contacting Anthropic",
       },
-      502,
-    );
+    });
+    return;
   }
+  clearTimeout(upstreamTimeout);
 
   const text = await upstream.text();
   // Always return JSON to client. If upstream returned non-JSON, wrap it.
@@ -98,22 +122,26 @@ export default async function handler(req: Request): Promise<Response> {
       error: { type: "upstream_non_json", status: upstream.status, message: text.slice(0, 500) },
     });
   }
-  return new Response(payload, {
-    status: upstream.status,
-    headers: {
-      "content-type": "application/json",
-      "access-control-allow-origin": "*",
-      "cache-control": "no-store",
-    },
-  });
+  res.statusCode = upstream.status;
+  res.setHeader("content-type", "application/json");
+  res.setHeader("access-control-allow-origin", "*");
+  res.setHeader("cache-control", "no-store");
+  res.end(payload);
 }
 
-function jsonResponse(obj: unknown, status: number): Response {
-  return new Response(JSON.stringify(obj), {
-    status,
-    headers: {
-      "content-type": "application/json",
-      "access-control-allow-origin": "*",
-    },
+function sendJson(res: ServerResponse, status: number, obj: unknown): void {
+  res.statusCode = status;
+  res.setHeader("content-type", "application/json");
+  res.setHeader("access-control-allow-origin", "*");
+  res.end(JSON.stringify(obj));
+}
+
+function readRawBody(req: IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let data = "";
+    req.setEncoding("utf8");
+    req.on("data", chunk => { data += chunk; });
+    req.on("end", () => resolve(data));
+    req.on("error", reject);
   });
 }
