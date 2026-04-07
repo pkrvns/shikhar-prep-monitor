@@ -268,8 +268,11 @@ Give the improvement tip now.`;
   });
 }
 
-export async function solveDoubt(question: string, image?: ImageBlock): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
-  const sys = `You are a patient CBSE Class 12 tutor for Physics, Chemistry, and Maths.
+// Shared system prompt for the doubt solver — used by both the one-shot
+// solveDoubt() and the multi-turn continueDoubt() so the formatting rules
+// (Unicode-only math, no LaTeX, no markdown) stay consistent across the
+// entire conversation.
+export const DOUBT_SYSTEM_PROMPT = `You are a patient CBSE Class 12 tutor for Physics, Chemistry, and Maths.
 Answer in clear, NCERT-style step-by-step format. Use simple language.
 Show all formulas and substitutions. Highlight the final answer at the end.
 Keep response concise and exam-focused.
@@ -296,11 +299,23 @@ You MUST therefore:
   Answer: v = 25 m/s
   ═══════════════════`;
 
+// Multi-turn doubt chat. Pass the full prior message history (alternating
+// user / assistant) plus the new user message inside the array. The same
+// formatting rules from DOUBT_SYSTEM_PROMPT apply.
+export async function continueDoubt(messages: ClaudeMessage[]): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
+  return callClaude({
+    system: DOUBT_SYSTEM_PROMPT,
+    max_tokens: 2000,
+    messages,
+  });
+}
+
+export async function solveDoubt(question: string, image?: ImageBlock): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
   const content: ContentBlock[] = [{ type: "text", text: question || "Solve the problem in the image." }];
   if (image) content.push(image);
 
   return callClaude({
-    system: sys,
+    system: DOUBT_SYSTEM_PROMPT,
     max_tokens: 2000,
     messages: [{ role: "user", content }],
   });

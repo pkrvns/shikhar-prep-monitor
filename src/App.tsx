@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRegisterSW } from "virtual:pwa-register/react";
 import { SYLLABUS_LINKS, SAMPLE_PAPERS, PYQ_LINKS, GENERAL_RESOURCES, FORMULAS, PYQ_PRIORITIES, TEST_PAPERS, TAG_COLORS, type LinkSection } from "./data";
-import { analyzeWork, solveDoubt, generateDailyReport, suggestErrorFix, fileToImageBlock, type ImageBlock, type AnalyzeWorkResult, type PriorAttemptCtx } from "./claude";
+import { analyzeWork, solveDoubt, continueDoubt, generateDailyReport, suggestErrorFix, fileToImageBlock, type ImageBlock, type AnalyzeWorkResult, type PriorAttemptCtx, type ClaudeMessage, type ContentBlock } from "./claude";
 import { getSubtopicsForChapter, deriveOverallConfidence } from "./subtopics";
 
 type Subject = "physics" | "chemistry" | "maths";
@@ -812,6 +812,14 @@ export default function App() {
   const [doubtSolving, setDoubtSolving] = useState(false);
   const [doubtAns, setDoubtAns] = useState<string>("");
   const [doubtErr, setDoubtErr] = useState<string>("");
+  // Multi-turn doubt chat: full conversation history Claude sees on every
+  // follow-up. Empty until the first solve.
+  const [doubtChat, setDoubtChat] = useState<ClaudeMessage[]>([]);
+  // Reply textarea state for follow-ups (separate from the initial doubtQ
+  // input so we don't blow away the original question while replying).
+  const [doubtReply, setDoubtReply] = useState<string>("");
+  const [doubtReplyImg, setDoubtReplyImg] = useState<ImageBlock | null>(null);
+  const [doubtReplyPreview, setDoubtReplyPreview] = useState<string>("");
 
   // SW update handling
   const { needRefresh, updateServiceWorker } = useRegisterSW({
@@ -1179,6 +1187,10 @@ export default function App() {
     setDoubtPreview("");
     setDoubtAns("");
     setDoubtErr("");
+    setDoubtChat([]);
+    setDoubtReply("");
+    setDoubtReplyImg(null);
+    setDoubtReplyPreview("");
     setCheckTab("doubt");
     setView("check");
     try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch { /* noop */ }
@@ -2654,12 +2666,59 @@ export default function App() {
     setDoubtPreview(`data:${blk.source.media_type};base64,${blk.source.data}`);
   };
 
+  const onDoubtReplyFile = async (files: FileList | null) => {
+    if (!files || !files[0]) { setDoubtReplyImg(null); setDoubtReplyPreview(""); return; }
+    const blk = await fileToImageBlock(files[0]);
+    setDoubtReplyImg(blk);
+    setDoubtReplyPreview(`data:${blk.source.media_type};base64,${blk.source.data}`);
+  };
+
   const runDoubt = async () => {
     if (!doubtQ.trim() && !doubtImg) { setDoubtErr("Enter a question or attach a photo"); return; }
     setDoubtSolving(true); setDoubtAns(""); setDoubtErr("");
     const res = await solveDoubt(doubtQ, doubtImg || undefined);
     setDoubtSolving(false);
-    if (res.ok) setDoubtAns(res.text); else setDoubtErr(res.error);
+    if (res.ok) {
+      setDoubtAns(res.text);
+      // Seed the conversation history so the user can reply to follow-ups.
+      const userContent: ContentBlock[] = [{ type: "text", text: doubtQ || "Solve the problem in the image." }];
+      if (doubtImg) userContent.push(doubtImg);
+      setDoubtChat([
+        { role: "user", content: userContent },
+        { role: "assistant", content: res.text },
+      ]);
+    } else {
+      setDoubtErr(res.error);
+    }
+  };
+
+  // Send a follow-up message in the doubt chat. Appends the user's reply to
+  // the running history, calls Claude with the full thread, then appends the
+  // assistant's response. The original question / answer stay visible above.
+  const sendDoubtReply = async () => {
+    if (!doubtReply.trim() && !doubtReplyImg) {
+      setDoubtErr("Type a follow-up or attach a photo");
+      return;
+    }
+    setDoubtErr("");
+    const userContent: ContentBlock[] = [{ type: "text", text: doubtReply || "(see attached image)" }];
+    if (doubtReplyImg) userContent.push(doubtReplyImg);
+    const newUserMsg: ClaudeMessage = { role: "user", content: userContent };
+    const nextHistory = [...doubtChat, newUserMsg];
+    // Optimistically show the user message immediately.
+    setDoubtChat(nextHistory);
+    setDoubtReply("");
+    setDoubtReplyImg(null);
+    setDoubtReplyPreview("");
+    setDoubtSolving(true);
+    const res = await continueDoubt(nextHistory);
+    setDoubtSolving(false);
+    if (res.ok) {
+      setDoubtChat([...nextHistory, { role: "assistant", content: res.text }]);
+      setDoubtAns(res.text); // keep the latest answer in the legacy field too
+    } else {
+      setDoubtErr(res.error);
+    }
   };
 
   // NOT a React component — a plain JSX-returning function. If we make it a
@@ -2691,7 +2750,7 @@ export default function App() {
       : "Clear today's report";
     const canClear =
       tab === "work" ? (checkImages.length > 0 || !!checkResult || !!checkAnalyzeErr || checkPreviews.length > 0)
-      : tab === "doubt" ? (!!doubtQ || !!doubtImg || !!doubtPreview || !!doubtAns || !!doubtErr)
+      : tab === "doubt" ? (!!doubtQ || !!doubtImg || !!doubtPreview || !!doubtAns || !!doubtErr || doubtChat.length > 0 || !!doubtReply || !!doubtReplyImg)
       : !!reports[fmtTodayISO()];
     const clearActiveTab = () => {
       if (tab === "work") {
@@ -2705,6 +2764,10 @@ export default function App() {
         setDoubtPreview("");
         setDoubtAns("");
         setDoubtErr("");
+        setDoubtChat([]);
+        setDoubtReply("");
+        setDoubtReplyImg(null);
+        setDoubtReplyPreview("");
       } else {
         const iso = fmtTodayISO();
         setReports(prev => {
@@ -2903,25 +2966,95 @@ export default function App() {
         {/* ===== DOUBT SOLVER TAB ===== */}
         {tab === "doubt" && (
           <>
-            <Card className="p-4">
-              <p className="text-[12px] font-bold text-gray-400 uppercase tracking-widest mb-2">Ask a Doubt</p>
-              <textarea value={doubtQ} onChange={e => setDoubtQ(e.target.value)} placeholder="Type your question or paste it here…"
-                className="w-full text-[14px] text-gray-700 border border-gray-200 rounded-xl px-3 py-2.5 bg-white min-h-[100px]" />
-              <label className="block mt-2 w-full border border-dashed border-gray-200 rounded-xl py-3 text-center cursor-pointer hover:border-brand-300 transition-all">
-                <input type="file" accept="image/*" capture="environment" onChange={e => onDoubtFile(e.target.files)} className="hidden" />
-                <p className="text-[13px] text-gray-500">📷 Optional: attach a photo of the question</p>
-              </label>
-              {doubtPreview && <img src={doubtPreview} alt="doubt" className="w-full max-h-40 object-contain rounded-lg border border-gray-100 mt-2" />}
-              <button onClick={runDoubt} disabled={solving}
-                className="mt-3 w-full bg-brand-600 disabled:bg-gray-300 text-white text-[14px] py-3 rounded-xl font-semibold active:scale-[0.98] transition-all">
-                {solving ? "Solving…" : "Solve with Claude"}
-              </button>
-              {doubtErr && <p className="text-[12px] text-red-500 mt-2 font-semibold">⚠️ {doubtErr}</p>}
-            </Card>
-            {doubtAns && (
+            {/* Initial-question card — only shown until the first answer arrives.
+                After that the conversation lives in the chat thread below. */}
+            {doubtChat.length === 0 && (
               <Card className="p-4">
-                <p className="text-[12px] font-bold text-brand-600 uppercase tracking-widest mb-2">Solution</p>
-                <pre className="text-[13px] text-gray-700 whitespace-pre-wrap font-sans leading-relaxed">{doubtAns}</pre>
+                <p className="text-[12px] font-bold text-gray-400 uppercase tracking-widest mb-2">Ask a Doubt</p>
+                <textarea value={doubtQ} onChange={e => setDoubtQ(e.target.value)} placeholder="Type your question or paste it here…"
+                  className="w-full text-[14px] text-gray-700 border border-gray-200 rounded-xl px-3 py-2.5 bg-white min-h-[100px]" />
+                <label className="block mt-2 w-full border border-dashed border-gray-200 rounded-xl py-3 text-center cursor-pointer hover:border-brand-300 transition-all">
+                  <input type="file" accept="image/*" capture="environment" onChange={e => onDoubtFile(e.target.files)} className="hidden" />
+                  <p className="text-[13px] text-gray-500">📷 Optional: attach a photo of the question</p>
+                </label>
+                {doubtPreview && <img src={doubtPreview} alt="doubt" className="w-full max-h-40 object-contain rounded-lg border border-gray-100 mt-2" />}
+                <button onClick={runDoubt} disabled={solving}
+                  className="mt-3 w-full bg-brand-600 disabled:bg-gray-300 text-white text-[14px] py-3 rounded-xl font-semibold active:scale-[0.98] transition-all">
+                  {solving ? "Solving…" : "Solve with Claude"}
+                </button>
+                {doubtErr && <p className="text-[12px] text-red-500 mt-2 font-semibold">⚠️ {doubtErr}</p>}
+              </Card>
+            )}
+
+            {/* Conversation thread — chat-style bubbles, one per turn. */}
+            {doubtChat.length > 0 && (
+              <Card className="p-4">
+                <p className="text-[12px] font-bold text-brand-600 uppercase tracking-widest mb-3">Conversation</p>
+                <div className="space-y-3">
+                  {doubtChat.map((m, i) => {
+                    // Pull text + any image previews out of the message content
+                    // (content can be a string or an array of blocks).
+                    let bodyText = "";
+                    const imgs: string[] = [];
+                    if (typeof m.content === "string") {
+                      bodyText = m.content;
+                    } else {
+                      for (const blk of m.content) {
+                        if (blk.type === "text") bodyText += (bodyText ? "\n" : "") + blk.text;
+                        else if (blk.type === "image") imgs.push(`data:${blk.source.media_type};base64,${blk.source.data}`);
+                      }
+                    }
+                    const isUser = m.role === "user";
+                    return (
+                      <div key={i} className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
+                        <div className={`max-w-[88%] rounded-2xl px-3 py-2 ${isUser ? "bg-brand-600 text-white" : "bg-gray-50 text-gray-800 border border-gray-100"}`}>
+                          <p className={`text-[10px] font-bold uppercase tracking-widest mb-1 ${isUser ? "text-brand-100" : "text-gray-400"}`}>
+                            {isUser ? "You" : "Claude"}
+                          </p>
+                          {imgs.map((src, j) => (
+                            <img key={j} src={src} alt="" className="w-full max-h-40 object-contain rounded-lg mb-1.5" />
+                          ))}
+                          <pre className={`text-[13px] whitespace-pre-wrap font-sans leading-relaxed ${isUser ? "text-white" : "text-gray-700"}`}>{bodyText}</pre>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {solving && (
+                    <div className="flex justify-start">
+                      <div className="bg-gray-50 border border-gray-100 rounded-2xl px-3 py-2">
+                        <p className="text-[12px] text-gray-400 italic">Claude is typing…</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </Card>
+            )}
+
+            {/* Reply composer — only after the conversation has started. Lets
+                the user answer Claude's follow-ups (e.g. "share the actual
+                problem") without losing the original question / answer. */}
+            {doubtChat.length > 0 && (
+              <Card className="p-4">
+                <p className="text-[12px] font-bold text-gray-400 uppercase tracking-widest mb-2">Reply</p>
+                <textarea
+                  value={doubtReply}
+                  onChange={e => setDoubtReply(e.target.value)}
+                  placeholder="Type your follow-up to Claude…"
+                  className="w-full text-[14px] text-gray-700 border border-gray-200 rounded-xl px-3 py-2.5 bg-white min-h-[80px]"
+                />
+                <label className="block mt-2 w-full border border-dashed border-gray-200 rounded-xl py-3 text-center cursor-pointer hover:border-brand-300 transition-all">
+                  <input type="file" accept="image/*" capture="environment" onChange={e => onDoubtReplyFile(e.target.files)} className="hidden" />
+                  <p className="text-[13px] text-gray-500">📷 Attach another photo (optional)</p>
+                </label>
+                {doubtReplyPreview && <img src={doubtReplyPreview} alt="reply" className="w-full max-h-40 object-contain rounded-lg border border-gray-100 mt-2" />}
+                <button
+                  onClick={sendDoubtReply}
+                  disabled={solving || (!doubtReply.trim() && !doubtReplyImg)}
+                  className="mt-3 w-full bg-brand-600 disabled:bg-gray-300 text-white text-[14px] py-3 rounded-xl font-semibold active:scale-[0.98] transition-all"
+                >
+                  {solving ? "Sending…" : "Send reply"}
+                </button>
+                {doubtErr && <p className="text-[12px] text-red-500 mt-2 font-semibold">⚠️ {doubtErr}</p>}
               </Card>
             )}
           </>
