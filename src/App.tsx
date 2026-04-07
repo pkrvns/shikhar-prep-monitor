@@ -268,6 +268,24 @@ export default function App() {
   const [reports, setReports] = useState<Record<string, { text: string; generatedAt: string }>>({});
   const reportRunning = useRef(false);
 
+  // ---------- CheckView state (lifted to App so it survives App re-renders) ----------
+  // CheckView is defined inside App() which means it remounts on every parent
+  // re-render (e.g. when addError or flash fires). Local useState inside CheckView
+  // would be wiped. So we keep all of its state here.
+  const [checkTab, setCheckTab] = useState<"work" | "doubt" | "report">("work");
+  const [checkSelTaskId, setCheckSelTaskId] = useState<string>("");
+  const [checkImages, setCheckImages] = useState<ImageBlock[]>([]);
+  const [checkPreviews, setCheckPreviews] = useState<string[]>([]);
+  const [checkAnalyzing, setCheckAnalyzing] = useState(false);
+  const [checkResult, setCheckResult] = useState<AnalyzeWorkResult | null>(null);
+  const [checkAnalyzeErr, setCheckAnalyzeErr] = useState<string>("");
+  const [doubtQ, setDoubtQ] = useState("");
+  const [doubtImg, setDoubtImg] = useState<ImageBlock | null>(null);
+  const [doubtPreview, setDoubtPreview] = useState<string>("");
+  const [doubtSolving, setDoubtSolving] = useState(false);
+  const [doubtAns, setDoubtAns] = useState<string>("");
+  const [doubtErr, setDoubtErr] = useState<string>("");
+
   // SW update handling
   const { needRefresh, updateServiceWorker } = useRegisterSW({
     onRegistered(r) { console.log("SW registered:", r); },
@@ -1785,111 +1803,114 @@ export default function App() {
   };
 
   // ====== CHECK WORK / DOUBT SOLVER / DAILY REPORT (Claude) ======
+  // All state lives in App so this view survives parent re-renders mid-analyze.
+  const todayTasks = (() => {
+    const t = todayMidnight();
+    const out: DayTask[] = [];
+    schedule.forEach(w => {
+      Object.entries(w.days).forEach(([day, ts]) => {
+        if (taskCalDate(w.week, day).getTime() === t.getTime()) out.push(...ts);
+      });
+    });
+    return out;
+  })();
+  // Initialize the selected task once we know what's available
+  useEffect(() => {
+    if (!checkSelTaskId && todayTasks[0]) setCheckSelTaskId(todayTasks[0].id);
+  }, [todayTasks, checkSelTaskId]);
+
+  const onPickFiles = async (files: FileList | null) => {
+    if (!files) return;
+    const blocks: ImageBlock[] = [];
+    const previews: string[] = [];
+    for (let i = 0; i < Math.min(files.length, 4); i++) {
+      const f = files[i];
+      try {
+        const blk = await fileToImageBlock(f);
+        blocks.push(blk);
+        previews.push(`data:${blk.source.media_type};base64,${blk.source.data}`);
+      } catch (e) {
+        console.error("img convert", e);
+      }
+    }
+    setCheckImages(blocks);
+    setCheckPreviews(previews);
+    setCheckResult(null);
+    setCheckAnalyzeErr("");
+  };
+
+  const runAnalyze = async () => {
+    const task = todayTasks.find(t => t.id === checkSelTaskId) || todayTasks[0];
+    if (!task) { setCheckAnalyzeErr("No task selected"); return; }
+    if (checkImages.length === 0) { setCheckAnalyzeErr("Please attach at least one photo"); return; }
+    setCheckAnalyzing(true);
+    setCheckResult(null);
+    setCheckAnalyzeErr("");
+    const res = await analyzeWork({
+      taskTopic: task.topic,
+      taskSubject: task.subject,
+      taskChapter: task.chapterName,
+      images: checkImages,
+      studentName: "Shikhar",
+    });
+    setCheckAnalyzing(false);
+    if (res.ok) {
+      setCheckResult(res.data);
+      // Auto-create error journal entries (silent - don't flash for each one)
+      const newErrors: ErrorEntry[] = res.data.mistakes.map(m => ({
+        id: `err-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        date: new Date().toISOString(),
+        subject: task.subject,
+        chapter: task.chapterName,
+        topic: task.topic,
+        errorType: m.type,
+        question: task.topic,
+        whatWentWrong: m.what_went_wrong,
+        correctApproach: m.correct_approach,
+        resolved: false,
+      }));
+      if (newErrors.length > 0) {
+        setErrors(prev => {
+          const u = [...newErrors, ...prev];
+          saveData("shikhar-errors", u);
+          return u;
+        });
+      }
+      // Auto-mark task done if correct/partial
+      if (res.data.verdict === "correct") markTask(task.id, "done", 5);
+      else if (res.data.verdict === "partial") markTask(task.id, "done", 3);
+    } else {
+      setCheckAnalyzeErr(res.error);
+    }
+  };
+
+  const onDoubtFile = async (files: FileList | null) => {
+    if (!files || !files[0]) { setDoubtImg(null); setDoubtPreview(""); return; }
+    const blk = await fileToImageBlock(files[0]);
+    setDoubtImg(blk);
+    setDoubtPreview(`data:${blk.source.media_type};base64,${blk.source.data}`);
+  };
+
+  const runDoubt = async () => {
+    if (!doubtQ.trim() && !doubtImg) { setDoubtErr("Enter a question or attach a photo"); return; }
+    setDoubtSolving(true); setDoubtAns(""); setDoubtErr("");
+    const res = await solveDoubt(doubtQ, doubtImg || undefined);
+    setDoubtSolving(false);
+    if (res.ok) setDoubtAns(res.text); else setDoubtErr(res.error);
+  };
+
   const CheckView = () => {
-    const [tab, setTab] = useState<"work" | "doubt" | "report">("work");
+    const tab = checkTab;
+    const setTab = setCheckTab;
+    const selTaskId = checkSelTaskId;
+    const setSelTaskId = setCheckSelTaskId;
+    const images = checkImages;
+    const imgPreviews = checkPreviews;
+    const analyzing = checkAnalyzing;
+    const result = checkResult;
+    const analyzeErr = checkAnalyzeErr;
+    const solving = doubtSolving;
 
-    // ----- Check Work tab -----
-    const todayTasks = (() => {
-      const t = todayMidnight();
-      const out: DayTask[] = [];
-      schedule.forEach(w => {
-        Object.entries(w.days).forEach(([day, ts]) => {
-          if (taskCalDate(w.week, day).getTime() === t.getTime()) out.push(...ts);
-        });
-      });
-      return out;
-    })();
-    const [selTaskId, setSelTaskId] = useState<string>(todayTasks[0]?.id || "");
-    const [images, setImages] = useState<ImageBlock[]>([]);
-    const [imgPreviews, setImgPreviews] = useState<string[]>([]);
-    const [analyzing, setAnalyzing] = useState(false);
-    const [result, setResult] = useState<AnalyzeWorkResult | null>(null);
-    const [analyzeErr, setAnalyzeErr] = useState<string>("");
-
-    const onPickFiles = async (files: FileList | null) => {
-      if (!files) return;
-      const blocks: ImageBlock[] = [];
-      const previews: string[] = [];
-      for (let i = 0; i < Math.min(files.length, 4); i++) {
-        const f = files[i];
-        try {
-          const blk = await fileToImageBlock(f);
-          blocks.push(blk);
-          previews.push(`data:${blk.source.media_type};base64,${blk.source.data}`);
-        } catch (e) {
-          console.error("img convert", e);
-        }
-      }
-      setImages(blocks);
-      setImgPreviews(previews);
-      setResult(null);
-      setAnalyzeErr("");
-    };
-
-    const runAnalyze = async () => {
-      const task = todayTasks.find(t => t.id === selTaskId) || todayTasks[0];
-      if (!task) { setAnalyzeErr("No task selected"); return; }
-      if (images.length === 0) { setAnalyzeErr("Please attach at least one photo"); return; }
-      setAnalyzing(true);
-      setResult(null);
-      setAnalyzeErr("");
-      const res = await analyzeWork({
-        taskTopic: task.topic,
-        taskSubject: task.subject,
-        taskChapter: task.chapterName,
-        images,
-        studentName: "Shikhar",
-      });
-      setAnalyzing(false);
-      if (res.ok) {
-        setResult(res.data);
-        // Auto-create error journal entries
-        res.data.mistakes.forEach(m => {
-          addError({
-            subject: task.subject,
-            chapter: task.chapterName,
-            topic: task.topic,
-            errorType: m.type,
-            question: task.topic,
-            whatWentWrong: m.what_went_wrong,
-            correctApproach: m.correct_approach,
-          });
-        });
-        // Auto-mark task done if correct
-        if (res.data.verdict === "correct") {
-          markTask(task.id, "done", 5);
-        } else if (res.data.verdict === "partial") {
-          markTask(task.id, "done", 3);
-        }
-      } else {
-        setAnalyzeErr(res.error);
-      }
-    };
-
-    // ----- Doubt Solver tab -----
-    const [doubtQ, setDoubtQ] = useState("");
-    const [doubtImg, setDoubtImg] = useState<ImageBlock | null>(null);
-    const [doubtPreview, setDoubtPreview] = useState<string>("");
-    const [solving, setSolving] = useState(false);
-    const [doubtAns, setDoubtAns] = useState<string>("");
-    const [doubtErr, setDoubtErr] = useState<string>("");
-
-    const onDoubtFile = async (files: FileList | null) => {
-      if (!files || !files[0]) { setDoubtImg(null); setDoubtPreview(""); return; }
-      const blk = await fileToImageBlock(files[0]);
-      setDoubtImg(blk);
-      setDoubtPreview(`data:${blk.source.media_type};base64,${blk.source.data}`);
-    };
-
-    const runDoubt = async () => {
-      if (!doubtQ.trim() && !doubtImg) { setDoubtErr("Enter a question or attach a photo"); return; }
-      setSolving(true); setDoubtAns(""); setDoubtErr("");
-      const res = await solveDoubt(doubtQ, doubtImg || undefined);
-      setSolving(false);
-      if (res.ok) setDoubtAns(res.text); else setDoubtErr(res.error);
-    };
-
-    // ----- Daily Report tab -----
     const todayISO = fmtTodayISO();
     const todaysReport = reports[todayISO];
     const sortedReportDates = Object.keys(reports).sort().reverse();
