@@ -1103,26 +1103,58 @@ export default function App() {
             </div>
 
             {/* Quick Actions */}
-            <div className="grid grid-cols-2 gap-2.5">
-              <Card onClick={() => setView("errors")} className="p-3.5">
-                <div className="flex items-start gap-2.5">
-                  <span className="text-base">{"\uD83D\uDCDD"}</span>
-                  <div>
-                    <p className="text-[16px] font-semibold text-gray-800">Log Errors</p>
-                    <p className="text-[16px] text-gray-400 mt-0.5">Track mistakes from today</p>
-                  </div>
+            {(() => {
+              const unresolvedErrors = errors.filter(e => !e.resolved).length;
+              const revisitItems = getRevisitItems();
+              const overdueRevisit = revisitItems.filter(i => i.urgency === "overdue").length;
+              const todayRevisit = revisitItems.filter(i => i.urgency === "today").length;
+              const showRevisit = revisitItems.length > 0;
+              return (
+                <div className={`grid gap-2.5 ${showRevisit ? "grid-cols-2" : "grid-cols-1"}`}>
+                  <Card onClick={() => setView("errors")} className="p-3.5">
+                    <div className="flex items-start gap-2.5">
+                      <span className="text-base">{"\uD83D\uDCDD"}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-[16px] font-semibold text-gray-800">Log Errors</p>
+                          {unresolvedErrors > 0 && (
+                            <span className="text-[11px] font-bold bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full">{unresolvedErrors}</span>
+                          )}
+                        </div>
+                        <p className="text-[16px] text-gray-400 mt-0.5">
+                          {unresolvedErrors > 0 ? `${unresolvedErrors} unresolved` : "Track mistakes from today"}
+                        </p>
+                      </div>
+                    </div>
+                  </Card>
+                  {showRevisit && (
+                    <Card onClick={() => setView("revisit")} className="p-3.5">
+                      <div className="flex items-start gap-2.5">
+                        <span className="text-base">{"\uD83D\uDD04"}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-[16px] font-semibold text-gray-800">Revisit</p>
+                            {overdueRevisit > 0 && (
+                              <span className="text-[11px] font-bold bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full">{overdueRevisit}</span>
+                            )}
+                            {overdueRevisit === 0 && todayRevisit > 0 && (
+                              <span className="text-[11px] font-bold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">{todayRevisit}</span>
+                            )}
+                          </div>
+                          <p className="text-[16px] text-gray-400 mt-0.5">
+                            {overdueRevisit > 0
+                              ? `${overdueRevisit} overdue`
+                              : todayRevisit > 0
+                                ? `${todayRevisit} due today`
+                                : `${revisitItems.length} scheduled`}
+                          </p>
+                        </div>
+                      </div>
+                    </Card>
+                  )}
                 </div>
-              </Card>
-              <Card onClick={() => setView("revisit")} className="p-3.5">
-                <div className="flex items-start gap-2.5">
-                  <span className="text-base">{"\uD83D\uDD04"}</span>
-                  <div>
-                    <p className="text-[16px] font-semibold text-gray-800">Revisit</p>
-                    <p className="text-[16px] text-gray-400 mt-0.5">Check pending revisions</p>
-                  </div>
-                </div>
-              </Card>
-            </div>
+              );
+            })()}
           </>
         )}
       </div>
