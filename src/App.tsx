@@ -591,10 +591,45 @@ export default function App() {
   const DailyView = () => {
     const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     const fullDayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-    const now = new Date();
-    const today = dayNames[now.getDay()];
-    const w = schedule[actW - 1];
-    const ts = w.days[today] || [];
+    void fullDayNames;
+
+    // Schedule range: 28 weeks starting Monday April 6, 2026
+    const SCHEDULE_START = new Date(2026, 3, 6);
+    const SCHEDULE_END = new Date(2026, 3, 6); SCHEDULE_END.setDate(SCHEDULE_END.getDate() + 28 * 7 - 1);
+
+    const todayDate = new Date(); todayDate.setHours(0, 0, 0, 0);
+    const isoToday = todayDate.toISOString().slice(0, 10);
+
+    // Date navigation state — defaults to today (clamped to schedule range)
+    const [viewDateISO, setViewDateISO] = useState<string>(() => {
+      if (todayDate < SCHEDULE_START) return SCHEDULE_START.toISOString().slice(0, 10);
+      if (todayDate > SCHEDULE_END) return SCHEDULE_END.toISOString().slice(0, 10);
+      return isoToday;
+    });
+
+    const viewDate = new Date(viewDateISO + "T00:00:00");
+    const now = viewDate;
+    const today = dayNames[viewDate.getDay()];
+    const isToday = viewDateISO === isoToday;
+
+    // Compute week number from viewDate relative to schedule start
+    const daysFromStart = Math.floor((viewDate.getTime() - SCHEDULE_START.getTime()) / 86400000);
+    const computedWeek = Math.floor(daysFromStart / 7) + 1;
+    const inRange = computedWeek >= 1 && computedWeek <= 28;
+    const w = inRange ? schedule[computedWeek - 1] : schedule[actW - 1];
+    const ts = inRange ? (w.days[today] || []) : [];
+
+    const shiftDate = (delta: number) => {
+      const d = new Date(viewDate); d.setDate(d.getDate() + delta);
+      if (d < SCHEDULE_START) return;
+      if (d > SCHEDULE_END) return;
+      setViewDateISO(d.toISOString().slice(0, 10));
+    };
+    const goToday = () => setViewDateISO(isoToday);
+    const minISO = SCHEDULE_START.toISOString().slice(0, 10);
+    const maxISO = SCHEDULE_END.toISOString().slice(0, 10);
+    const canPrev = new Date(viewDate.getTime() - 86400000) >= SCHEDULE_START;
+    const canNext = new Date(viewDate.getTime() + 86400000) <= SCHEDULE_END;
 
     const totalHours = ts.reduce((a, t) => a + t.hours, 0);
     const doneCount = ts.filter(t => progress[t.id]?.status === "done").length;
@@ -664,14 +699,66 @@ export default function App() {
 
     return (
       <div className="space-y-4 animate-fade-in-up">
+        {/* Date Navigation */}
+        <Card className="p-3">
+          <div className="flex items-center justify-between gap-2">
+            <button
+              onClick={() => shiftDate(-1)}
+              disabled={!canPrev}
+              className="w-10 h-10 rounded-xl bg-gray-50 hover:bg-gray-100 active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center text-gray-600 font-bold text-lg transition-all"
+              aria-label="Previous day"
+            >
+              ‹
+            </button>
+            <div className="flex-1 flex flex-col items-center">
+              <input
+                type="date"
+                value={viewDateISO}
+                min={minISO}
+                max={maxISO}
+                onChange={(e) => setViewDateISO(e.target.value)}
+                className="text-[14px] font-bold text-gray-800 bg-transparent border-none focus:outline-none text-center cursor-pointer"
+              />
+              {!isToday && (
+                <button
+                  onClick={goToday}
+                  className="text-[11px] text-brand-600 font-semibold mt-0.5 hover:underline"
+                >
+                  Jump to Today
+                </button>
+              )}
+              {isToday && (
+                <span className="text-[11px] text-emerald-600 font-semibold mt-0.5">● Today</span>
+              )}
+            </div>
+            <button
+              onClick={() => shiftDate(1)}
+              disabled={!canNext}
+              className="w-10 h-10 rounded-xl bg-gray-50 hover:bg-gray-100 active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center text-gray-600 font-bold text-lg transition-all"
+              aria-label="Next day"
+            >
+              ›
+            </button>
+          </div>
+        </Card>
+
+        {/* Out-of-range warning */}
+        {!inRange && (
+          <Card className="p-3 bg-amber-50 border-amber-200">
+            <p className="text-[13px] text-amber-700 font-semibold text-center">
+              This date is outside the 28-week schedule (Apr 6 – Oct 18, 2026).
+            </p>
+          </Card>
+        )}
+
         {/* Hero Banner */}
         <div className="bg-gradient-to-br from-brand-600 via-brand-700 to-brand-800 rounded-2xl p-5 text-white shadow-xl shadow-brand-600/20 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-8 -mt-8" />
           <div className="absolute bottom-0 left-0 w-20 h-20 bg-white/5 rounded-full -ml-4 -mb-4" />
           <div className="relative">
             <p className="text-[17px] text-white/50 font-medium">{now.toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</p>
-            <h2 className="text-xl font-bold mt-1">Today's Plan</h2>
-            <p className="text-[17px] text-white/50 mt-0.5">Week {actW} &middot; {w.label}</p>
+            <h2 className="text-xl font-bold mt-1">{isToday ? "Today's Plan" : viewDate < todayDate ? "Past Day Plan" : "Upcoming Day Plan"}</h2>
+            <p className="text-[17px] text-white/50 mt-0.5">Week {inRange ? computedWeek : actW} &middot; {w.label}</p>
             {ts.length > 0 && (
               <div className="flex items-center gap-4 mt-3 pt-3 border-t border-white/10">
                 <div>
@@ -698,7 +785,7 @@ export default function App() {
         </div>
 
         {ts.length === 0 ? (
-          <EmptyState icon={"\uD83C\uDF1F"} title="No tasks scheduled" subtitle="Enjoy your day off!" />
+          <EmptyState icon={"\uD83C\uDF1F"} title="No tasks scheduled" subtitle={isToday ? "Enjoy your day off!" : "No tasks were planned for this day."} />
         ) : (
           <>
             {/* Motivational Note */}
@@ -713,7 +800,7 @@ export default function App() {
             {doneCount > 0 && (
               <Card className="p-3.5">
                 <div className="flex items-center justify-between mb-2">
-                  <p className="text-[16px] font-bold text-gray-400 uppercase tracking-widest">Today's Progress</p>
+                  <p className="text-[16px] font-bold text-gray-400 uppercase tracking-widest">{isToday ? "Today's Progress" : "Day Progress"}</p>
                   <span className="text-[17px] font-bold text-gray-600">{doneCount}/{ts.length} tasks &middot; {doneHoursToday}h done</span>
                 </div>
                 <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
@@ -724,7 +811,7 @@ export default function App() {
 
             {/* Subject Focus */}
             <Card className="p-3.5">
-              <p className="text-[16px] font-bold text-gray-400 uppercase tracking-widest mb-2.5">Today's Focus</p>
+              <p className="text-[16px] font-bold text-gray-400 uppercase tracking-widest mb-2.5">{isToday ? "Today's Focus" : "Day Focus"}</p>
               <div className="flex gap-2">
                 {subjects.map(s => {
                   const sc = SUBJ[s];
@@ -783,7 +870,7 @@ export default function App() {
             <div className="rounded-2xl border-2 border-brand-400 bg-brand-50 overflow-hidden">
               <div className="bg-brand-500 px-4 py-3 flex items-center gap-2">
                 <span className="text-white text-lg">📋</span>
-                <p className="text-[15px] font-black text-white uppercase tracking-widest">Study Instructions for Today</p>
+                <p className="text-[15px] font-black text-white uppercase tracking-widest">Study Instructions {isToday ? "for Today" : `for ${viewDate.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" })}`}</p>
               </div>
               <div className="p-4 space-y-4">
                 {ts.filter((t, i, arr) => arr.findIndex(x => x.type === t.type) === i).map(t => (
