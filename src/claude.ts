@@ -26,10 +26,13 @@ export async function callClaude(opts: {
   max_tokens?: number;
   model?: string;
 }): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
+  let r: Response;
   try {
-    const r = await fetch("/api/claude", {
+    r = await fetch("/api/claude", {
       method: "POST",
       headers: { "content-type": "application/json" },
+      // cache: no-store stops the service worker from intercepting / caching this POST.
+      cache: "no-store",
       body: JSON.stringify({
         model: opts.model || CLAUDE_MODEL,
         max_tokens: opts.max_tokens || 2048,
@@ -37,16 +40,34 @@ export async function callClaude(opts: {
         messages: opts.messages,
       }),
     });
-    const data = (await r.json()) as ClaudeResponse;
-    if (!r.ok) {
-      const msg = data?.error?.message || `HTTP ${r.status}`;
-      return { ok: false, error: msg };
-    }
-    const text = data.content?.find(c => c.type === "text")?.text || "";
-    return { ok: true, text };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "Network error" };
+    return { ok: false, error: "Network error: " + (e instanceof Error ? e.message : String(e)) };
   }
+
+  // Read body as text first so we can show useful errors even when the
+  // server returned HTML (e.g. a 404 page) instead of JSON.
+  const raw = await r.text();
+  let data: ClaudeResponse | null = null;
+  try { data = JSON.parse(raw) as ClaudeResponse; } catch { /* not JSON */ }
+
+  if (!r.ok) {
+    const upstreamMsg = data?.error?.message;
+    return {
+      ok: false,
+      error: `HTTP ${r.status} — ${upstreamMsg || raw.slice(0, 200) || "no body"}`,
+    };
+  }
+  if (!data) {
+    return { ok: false, error: "Server returned non-JSON: " + raw.slice(0, 200) };
+  }
+  if (data.error) {
+    return { ok: false, error: data.error.message || data.error.type || "Unknown error" };
+  }
+  const text = data.content?.find(c => c.type === "text")?.text || "";
+  if (!text) {
+    return { ok: false, error: "Empty response from Claude" };
+  }
+  return { ok: true, text };
 }
 
 // Convert a File (from <input type="file">) into a base64 image block ready for Claude.
@@ -148,13 +169,21 @@ The attached photo(s) are Shikhar's solved work for this task. Please grade and 
 
   if (!result.ok) return { ok: false, error: result.error };
 
-  try {
-    const cleaned = result.text.trim().replace(/^```json\s*/i, "").replace(/```\s*$/, "");
-    const parsed = JSON.parse(cleaned) as AnalyzeWorkResult;
-    return { ok: true, data: parsed };
-  } catch {
-    return { ok: false, error: "Claude response was not valid JSON. Raw: " + result.text.slice(0, 200) };
+  // Robust JSON extraction: strip ```json fences, also pull the first {...} block.
+  const tryParse = (s: string): AnalyzeWorkResult | null => {
+    try { return JSON.parse(s) as AnalyzeWorkResult; } catch { return null; }
+  };
+  let cleaned = result.text.trim();
+  cleaned = cleaned.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
+  let parsed = tryParse(cleaned);
+  if (!parsed) {
+    const m = result.text.match(/\{[\s\S]*\}/);
+    if (m) parsed = tryParse(m[0]);
   }
+  if (!parsed) {
+    return { ok: false, error: "Claude returned non-JSON: " + result.text.slice(0, 250) };
+  }
+  return { ok: true, data: parsed };
 }
 
 export async function solveDoubt(question: string, image?: ImageBlock): Promise<{ ok: true; text: string } | { ok: false; error: string }> {

@@ -28,10 +28,12 @@ export default async function handler(req: Request): Promise<Response> {
     return jsonResponse({ error: "method_not_allowed" }, 405);
   }
 
-  const apiKey = (globalThis as { process?: { env?: { ANTHROPIC_API_KEY?: string } } }).process?.env?.ANTHROPIC_API_KEY;
+  // Edge runtime: process.env is available for env vars set in Vercel.
+  const apiKey =
+    typeof process !== "undefined" && process.env ? process.env.ANTHROPIC_API_KEY : undefined;
   if (!apiKey) {
     return jsonResponse(
-      { error: "missing_api_key", message: "ANTHROPIC_API_KEY env var not set on Vercel." },
+      { error: { type: "missing_api_key", message: "ANTHROPIC_API_KEY env var not set on Vercel." } },
       500,
     );
   }
@@ -58,23 +60,45 @@ export default async function handler(req: Request): Promise<Response> {
     return jsonResponse({ error: "missing_messages" }, 400);
   }
 
-  const upstream = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: body.model || DEFAULT_MODEL,
-      max_tokens: body.max_tokens || DEFAULT_MAX_TOKENS,
-      system: body.system,
-      messages: body.messages,
-    }),
-  });
+  let upstream: Response;
+  try {
+    upstream = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: body.model || DEFAULT_MODEL,
+        max_tokens: body.max_tokens || DEFAULT_MAX_TOKENS,
+        system: body.system,
+        messages: body.messages,
+      }),
+    });
+  } catch (e) {
+    return jsonResponse(
+      {
+        error: {
+          type: "upstream_fetch_failed",
+          message: e instanceof Error ? e.message : "Network error contacting Anthropic",
+        },
+      },
+      502,
+    );
+  }
 
   const text = await upstream.text();
-  return new Response(text, {
+  // Always return JSON to client. If upstream returned non-JSON, wrap it.
+  let payload = text;
+  try {
+    JSON.parse(text);
+  } catch {
+    payload = JSON.stringify({
+      error: { type: "upstream_non_json", status: upstream.status, message: text.slice(0, 500) },
+    });
+  }
+  return new Response(payload, {
     status: upstream.status,
     headers: {
       "content-type": "application/json",

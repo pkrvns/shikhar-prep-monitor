@@ -255,7 +255,15 @@ export default function App() {
   const [installPrompt, setInstallPrompt] = useState<Event | null>(null);
   const [showInstallBanner, setShowInstallBanner] = useState(false);
   const installDismissed = useRef(false);
-  const [hideUpdate, setHideUpdate] = useState(false);
+  // Persist update-banner dismissal across reloads. Once user clicks Update or X
+  // we hide the banner for 6 hours. A genuinely-newer SW after that window will
+  // re-trigger needRefresh anyway.
+  const [hideUpdate, setHideUpdate] = useState<boolean>(() => {
+    try {
+      const until = Number(localStorage.getItem("shikhar-update-dismissed-until") || "0");
+      return Date.now() < until;
+    } catch { return false; }
+  });
   // Daily reports keyed by YYYY-MM-DD
   const [reports, setReports] = useState<Record<string, { text: string; generatedAt: string }>>({});
   const reportRunning = useRef(false);
@@ -266,13 +274,20 @@ export default function App() {
     onRegisterError(e) { console.log("SW error:", e); },
   });
 
-  const doUpdate = () => {
+  const persistDismissUpdate = () => {
+    try {
+      const sixHours = 6 * 60 * 60 * 1000;
+      localStorage.setItem("shikhar-update-dismissed-until", String(Date.now() + sixHours));
+    } catch {}
     setHideUpdate(true);
+  };
+  const doUpdate = () => {
+    persistDismissUpdate();
     try { updateServiceWorker(true); } catch (e) { console.log("update err", e); }
     // Hard reload as a fallback in case the SW activation doesn't auto-reload
     setTimeout(() => { window.location.reload(); }, 800);
   };
-  const dismissUpdate = () => setHideUpdate(true);
+  const dismissUpdate = () => persistDismissUpdate();
 
   // Online/offline detection
   useEffect(() => {
