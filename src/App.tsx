@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useRegisterSW } from "virtual:pwa-register/react";
 import { SYLLABUS_LINKS, SAMPLE_PAPERS, PYQ_LINKS, GENERAL_RESOURCES, FORMULAS, PYQ_PRIORITIES, TEST_PAPERS, TAG_COLORS, type LinkSection } from "./data";
 import { analyzeWork, solveDoubt, generateDailyReport, suggestErrorFix, fileToImageBlock, type ImageBlock, type AnalyzeWorkResult, type PriorAttemptCtx } from "./claude";
+import { getSubtopicsForChapter, deriveOverallConfidence } from "./subtopics";
 
 type Subject = "physics" | "chemistry" | "maths";
 type Phase = "foundation" | "practice" | "mock";
@@ -35,8 +36,9 @@ interface ProgressEntry {
   // ---- Structured task review (new) ----
   completedSteps?: number[];      // indexes of study instructions Shikhar completed
   problemSteps?: number[];        // indexes of study instructions that caused trouble
-  topicConfidence?: "good" | "average" | "bad"; // replaces the old emoji star rating
-  topicsCovered?: string[];       // sub-topics within the assignment scope that were actually covered
+  topicConfidence?: "good" | "average" | "bad"; // overall — derived from subtopicConfidence when present
+  topicsCovered?: string[];       // legacy free-text sub-topics (only for chapters with no canonical list)
+  subtopicConfidence?: Record<string, "good" | "average" | "bad">; // per-sub-topic grasp
   completionNote?: string;        // optional 1-line free-text reflection
 }
 
@@ -279,7 +281,7 @@ type MarkTaskFn = (
   tid: string,
   st: TaskStatus,
   rat?: number,
-  extras?: Partial<Pick<ProgressEntry, "completedSteps" | "problemSteps" | "topicConfidence" | "topicsCovered" | "completionNote">>,
+  extras?: Partial<Pick<ProgressEntry, "completedSteps" | "problemSteps" | "topicConfidence" | "topicsCovered" | "subtopicConfidence" | "completionNote">>,
 ) => void;
 
 function confLabel(c: "good" | "average" | "bad") {
@@ -308,10 +310,13 @@ function TaskCardImpl({
   const isSkip = entry?.status === "skipped";
   const sc = SUBJ[task.subject];
   const steps = getTipInstructions(task);
+  const canonSubtopics = getSubtopicsForChapter(task.chapterName);
+  const hasCanonSubtopics = canonSubtopics.length > 0;
 
   const [showReview, setShowReview] = useState(false);
   const [draftCompleted, setDraftCompleted] = useState<Set<number>>(() => new Set(entry?.completedSteps || []));
   const [draftProblems, setDraftProblems] = useState<Set<number>>(() => new Set(entry?.problemSteps || []));
+  const [draftSubConf, setDraftSubConf] = useState<Record<string, "good" | "average" | "bad">>(entry?.subtopicConfidence || {});
   const [draftConfidence, setDraftConfidence] = useState<"good" | "average" | "bad" | "">(entry?.topicConfidence || "");
   const [draftTopics, setDraftTopics] = useState<string[]>(entry?.topicsCovered || []);
   const [topicInput, setTopicInput] = useState("");
@@ -323,11 +328,25 @@ function TaskCardImpl({
   const openReview = () => {
     setDraftCompleted(new Set(entry?.completedSteps || []));
     setDraftProblems(new Set(entry?.problemSteps || []));
+    setDraftSubConf(entry?.subtopicConfidence || {});
     setDraftConfidence(entry?.topicConfidence || "");
     setDraftTopics(entry?.topicsCovered || []);
     setTopicInput("");
     setDraftNote(entry?.completionNote || "");
     setShowReview(true);
+  };
+
+  const setSubConf = (sub: string, c: "good" | "average" | "bad") => {
+    setDraftSubConf(prev => {
+      // Tap the same button again to clear (so a wrongly tapped sub-topic
+      // can be reset back to "not yet rated").
+      if (prev[sub] === c) {
+        const next = { ...prev };
+        delete next[sub];
+        return next;
+      }
+      return { ...prev, [sub]: c };
+    });
   };
 
   const addTopic = (raw: string) => {
@@ -349,18 +368,26 @@ function TaskCardImpl({
     setter(next);
   };
 
+  // Derived overall confidence: prefer the worst-case across rated sub-topics,
+  // fall back to the explicit overall picker (only used when no canonical
+  // sub-topics exist for this chapter).
+  const derivedSubConf = deriveOverallConfidence(draftSubConf);
+  const effectiveOverall: "good" | "average" | "bad" | "" = derivedSubConf || draftConfidence;
+  const canSave = !!effectiveOverall;
+
   const submitReview = () => {
-    if (!draftConfidence) return;
+    if (!canSave || !effectiveOverall) return;
     // If the user typed a topic but didn't press Add/Enter, capture it.
     const pendingTopic = topicInput.trim();
     const finalTopics = pendingTopic && !draftTopics.includes(pendingTopic)
       ? [...draftTopics, pendingTopic]
       : draftTopics;
-    markTask(task.id, "done", CONFIDENCE_TO_RATING[draftConfidence], {
+    markTask(task.id, "done", CONFIDENCE_TO_RATING[effectiveOverall], {
       completedSteps: Array.from(draftCompleted).sort((a, b) => a - b),
       problemSteps: Array.from(draftProblems).sort((a, b) => a - b),
-      topicConfidence: draftConfidence,
-      topicsCovered: finalTopics.length > 0 ? finalTopics : undefined,
+      topicConfidence: effectiveOverall,
+      subtopicConfidence: Object.keys(draftSubConf).length > 0 ? draftSubConf : undefined,
+      topicsCovered: !hasCanonSubtopics && finalTopics.length > 0 ? finalTopics : undefined,
       completionNote: draftNote.trim() || undefined,
     });
     setShowReview(false);
@@ -400,6 +427,22 @@ function TaskCardImpl({
               )}
             </div>
           )}
+          {/* Per-sub-topic confidence summary (worst first) */}
+          {entry?.subtopicConfidence && Object.keys(entry.subtopicConfidence).length > 0 && (
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {Object.entries(entry.subtopicConfidence)
+                .sort(([, a], [, b]) => {
+                  const ord = { bad: 0, average: 1, good: 2 } as const;
+                  return ord[a] - ord[b];
+                })
+                .map(([sub, c]) => (
+                  <span key={sub} className={`text-[11px] font-semibold px-1.5 py-0.5 rounded ring-1 ${confColor(c)}`}>
+                    {c === "good" ? "👍" : c === "average" ? "🤔" : "👎"} {sub}
+                  </span>
+                ))}
+            </div>
+          )}
+          {/* Legacy free-text topics (only chapters with no canonical list) */}
           {entry?.topicsCovered && entry.topicsCovered.length > 0 && (
             <div className="mt-1.5 flex flex-wrap gap-1">
               {entry.topicsCovered.map(t => (
@@ -466,60 +509,104 @@ function TaskCardImpl({
             </ol>
           </div>
 
-          {/* Topics covered in this assignment scope */}
-          <div>
-            <p className="text-[12px] font-bold text-gray-500 uppercase tracking-widest mb-1">Topics covered</p>
-            <p className="text-[11px] text-gray-400 mb-2">List the sub-topics from <span className="font-semibold text-gray-500">{task.chapterName}</span> that were actually covered today.</p>
-            {draftTopics.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mb-2">
-                {draftTopics.map(t => (
-                  <span key={t} className="inline-flex items-center gap-1 bg-brand-50 text-brand-700 text-[12px] font-semibold px-2 py-1 rounded-full ring-1 ring-brand-200">
-                    {t}
-                    <button type="button" onClick={() => removeTopic(t)} className="text-brand-400 hover:text-brand-700" aria-label={`Remove ${t}`}>&times;</button>
-                  </span>
-                ))}
+          {/* Per-sub-topic confidence — auto-listed from canonical chapter map */}
+          {hasCanonSubtopics ? (
+            <div>
+              <p className="text-[12px] font-bold text-gray-500 uppercase tracking-widest mb-1">Sub-topics &mdash; how is each one now?</p>
+              <p className="text-[11px] text-gray-400 mb-2">
+                Tap 👍 / 🤔 / 👎 next to every sub-topic of <span className="font-semibold text-gray-500">{task.chapterName}</span> that was covered today. Skip the ones you didn&rsquo;t touch. Tap the same button again to clear.
+              </p>
+              <ul className="space-y-1.5">
+                {canonSubtopics.map(sub => {
+                  const c = draftSubConf[sub];
+                  const btn = (val: "good" | "average" | "bad", icon: string, lbl: string) => (
+                    <button
+                      type="button"
+                      key={val}
+                      onClick={() => setSubConf(sub, val)}
+                      aria-label={`${sub}: ${lbl}`}
+                      className={`w-8 h-8 rounded-lg text-[14px] font-bold flex items-center justify-center transition-all active:scale-90 ring-1 ${
+                        c === val ? confColor(val) : "bg-white text-gray-300 ring-gray-200 hover:bg-gray-50"
+                      }`}
+                    >{icon}</button>
+                  );
+                  return (
+                    <li key={sub} className="flex items-start gap-2">
+                      <div className="flex gap-1 flex-shrink-0 mt-0.5">
+                        {btn("good", "👍", "Good")}
+                        {btn("average", "🤔", "Average")}
+                        {btn("bad", "👎", "Bad")}
+                      </div>
+                      <p className={`text-[13px] leading-snug flex-1 pt-2 ${c ? "text-gray-800 font-medium" : "text-gray-500"}`}>{sub}</p>
+                    </li>
+                  );
+                })}
+              </ul>
+              {/* Live derived overall confidence so Shweta knows the result of her ratings */}
+              {derivedSubConf && (
+                <div className="mt-2 text-[12px] text-gray-500">
+                  Overall (worst-case): <span className={`font-bold px-2 py-0.5 rounded-full ring-1 ${confColor(derivedSubConf)}`}>{confLabel(derivedSubConf)}</span>
+                </div>
+              )}
+            </div>
+          ) : (
+            // Fallback for chapters with no canonical sub-topic list:
+            // free-text chip input + a single overall confidence picker.
+            <>
+              <div>
+                <p className="text-[12px] font-bold text-gray-500 uppercase tracking-widest mb-1">Topics covered</p>
+                <p className="text-[11px] text-gray-400 mb-2">List the sub-topics from <span className="font-semibold text-gray-500">{task.chapterName}</span> that were actually covered today.</p>
+                {draftTopics.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {draftTopics.map(t => (
+                      <span key={t} className="inline-flex items-center gap-1 bg-brand-50 text-brand-700 text-[12px] font-semibold px-2 py-1 rounded-full ring-1 ring-brand-200">
+                        {t}
+                        <button type="button" onClick={() => removeTopic(t)} className="text-brand-400 hover:text-brand-700" aria-label={`Remove ${t}`}>&times;</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={topicInput}
+                    onChange={e => {
+                      const v = e.target.value;
+                      if (v.endsWith(",")) addTopic(v);
+                      else setTopicInput(v);
+                    }}
+                    onKeyDown={e => {
+                      if (e.key === "Enter") { e.preventDefault(); addTopic(topicInput); }
+                    }}
+                    placeholder="e.g. limits, continuity"
+                    className="flex-1 text-[13px] text-gray-700 border border-gray-200 rounded-xl px-3 py-2 bg-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => addTopic(topicInput)}
+                    disabled={!topicInput.trim()}
+                    className="text-[13px] bg-gray-100 disabled:opacity-40 text-gray-700 px-3 py-2 rounded-xl font-semibold active:scale-95"
+                  >Add</button>
+                </div>
               </div>
-            )}
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                value={topicInput}
-                onChange={e => {
-                  const v = e.target.value;
-                  // Comma auto-commits a topic so the user can type "limits, derivatives, " quickly.
-                  if (v.endsWith(",")) addTopic(v);
-                  else setTopicInput(v);
-                }}
-                onKeyDown={e => {
-                  if (e.key === "Enter") { e.preventDefault(); addTopic(topicInput); }
-                }}
-                placeholder="e.g. limits, continuity, L'Hopital"
-                className="flex-1 text-[13px] text-gray-700 border border-gray-200 rounded-xl px-3 py-2 bg-white"
-              />
-              <button
-                type="button"
-                onClick={() => addTopic(topicInput)}
-                disabled={!topicInput.trim()}
-                className="text-[13px] bg-gray-100 disabled:opacity-40 text-gray-700 px-3 py-2 rounded-xl font-semibold active:scale-95"
-              >Add</button>
-            </div>
-          </div>
 
-          <div>
-            <p className="text-[12px] font-bold text-gray-500 uppercase tracking-widest mb-2">How is this topic now?</p>
-            <div className="grid grid-cols-3 gap-2">
-              {(["good", "average", "bad"] as const).map(c => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => setDraftConfidence(c)}
-                  className={`text-[14px] py-2 rounded-xl font-bold transition-all active:scale-95 ring-1 ${draftConfidence === c ? confColor(c) : "bg-gray-50 text-gray-500 ring-gray-200 hover:bg-gray-100"}`}
-                >
-                  {c === "good" ? "👍 Good" : c === "average" ? "🤔 Average" : "👎 Bad"}
-                </button>
-              ))}
-            </div>
-          </div>
+              <div>
+                <p className="text-[12px] font-bold text-gray-500 uppercase tracking-widest mb-2">How is this topic now?</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {(["good", "average", "bad"] as const).map(c => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setDraftConfidence(c)}
+                      className={`text-[14px] py-2 rounded-xl font-bold transition-all active:scale-95 ring-1 ${draftConfidence === c ? confColor(c) : "bg-gray-50 text-gray-500 ring-gray-200 hover:bg-gray-100"}`}
+                    >
+                      {c === "good" ? "👍 Good" : c === "average" ? "🤔 Average" : "👎 Bad"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
 
           <div>
             <p className="text-[12px] font-bold text-gray-500 uppercase tracking-widest mb-2">Note (optional)</p>
@@ -536,7 +623,7 @@ function TaskCardImpl({
             <button
               type="button"
               onClick={submitReview}
-              disabled={!draftConfidence}
+              disabled={!canSave}
               className="flex-1 bg-brand-600 disabled:bg-gray-300 text-white text-[14px] py-2.5 rounded-xl font-semibold active:scale-[0.98] transition-all"
             >
               {isDone ? "Update Review" : "Save & Mark Done"}
@@ -571,7 +658,23 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   return <h2 className="text-[17px] font-bold text-gray-900 tracking-tight">{children}</h2>;
 }
 
-function Avatar({ name, src, size = 36, fallbackBg = "from-brand-500 to-brand-700", style }: { name: string; src?: string; size?: number; fallbackBg?: string; style?: React.CSSProperties }) {
+function Avatar({
+  name,
+  src,
+  size = 36,
+  fallbackBg = "from-brand-500 to-brand-700",
+  style,
+  imgScale = 1,
+  imgPosition = "center 30%",
+}: {
+  name: string;
+  src?: string;
+  size?: number;
+  fallbackBg?: string;
+  style?: React.CSSProperties;
+  imgScale?: number;        // 1 = no zoom, 1.4 = ~40% zoom on face
+  imgPosition?: string;     // CSS object-position; default biases up to faces
+}) {
   const [errored, setErrored] = useState(false);
   const initials = name.split(" ").map(p => p[0]).slice(0, 2).join("").toUpperCase();
   const showImg = src && !errored;
@@ -583,7 +686,19 @@ function Avatar({ name, src, size = 36, fallbackBg = "from-brand-500 to-brand-70
       aria-label={name}
     >
       {showImg ? (
-        <img src={src} alt={name} onError={() => setErrored(true)} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        <img
+          src={src}
+          alt={name}
+          onError={() => setErrored(true)}
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            objectPosition: imgPosition,
+            transform: `scale(${imgScale})`,
+            transformOrigin: imgPosition,
+          }}
+        />
       ) : (
         <span>{initials}</span>
       )}
@@ -724,7 +839,7 @@ export default function App() {
   const flash = useCallback((m: string, f = 880) => { setToast(m); playBeep(f); setTimeout(() => setToast(""), 2200); }, []);
   const chgActW = useCallback((w: number) => { setActW(w); saveData("shikhar-active-week", w); flash(`Week ${w} active`, 660); }, [flash]);
 
-  const markTask = useCallback((tid: string, st: TaskStatus, rat = 0, extras?: Partial<Pick<ProgressEntry, "completedSteps" | "problemSteps" | "topicConfidence" | "topicsCovered" | "completionNote">>) => {
+  const markTask = useCallback((tid: string, st: TaskStatus, rat = 0, extras?: Partial<Pick<ProgressEntry, "completedSteps" | "problemSteps" | "topicConfidence" | "topicsCovered" | "subtopicConfidence" | "completionNote">>) => {
     setProgress(prev => {
       // Preserve any existing review fields when toggling status only.
       const existing = prev[tid];
@@ -738,6 +853,7 @@ export default function App() {
         problemSteps: extras?.problemSteps ?? existing?.problemSteps,
         topicConfidence: extras?.topicConfidence ?? existing?.topicConfidence,
         topicsCovered: extras?.topicsCovered ?? existing?.topicsCovered,
+        subtopicConfidence: extras?.subtopicConfidence ?? existing?.subtopicConfidence,
         completionNote: extras?.completionNote ?? existing?.completionNote,
       };
       const u = { ...prev, [tid]: merged };
@@ -812,13 +928,17 @@ export default function App() {
   })();
 
   // A completed task qualifies for spaced revisit when its STRUCTURED REVIEW
-  // signals weakness:
-  //   • topicConfidence === "bad"                          → always revisit
-  //   • topicConfidence === "average" AND ≥1 problem step  → revisit
-  //   • topicConfidence === "average" AND no problem step  → skip (just OK)
-  //   • topicConfidence === "good"                          → never
-  // Legacy fallback: if a done entry has no topicConfidence (old data),
-  // fall back to the legacy 1-2 star rating so existing entries still work.
+  // signals weakness. Priority order:
+  //   1. Per-sub-topic confidence (preferred):
+  //        • any sub-topic === "bad"                            → revisit, list weak sub-topics
+  //        • any sub-topic === "average" (with or without prob) → revisit, list weak sub-topics
+  //   2. Legacy overall topicConfidence (no sub-topic data):
+  //        • "bad"                                              → revisit
+  //        • "average" + ≥1 problem step                         → revisit
+  //   3. Pre-structured-review entries: 1-2 star rating
+  //
+  // Each item also carries the list of WEAK sub-topics so the revisit UI
+  // can show Shweta exactly what to re-cover.
   const getRevisitItems = () => {
     const items: Array<{
       task: DayTask;
@@ -826,24 +946,45 @@ export default function App() {
       revisitDates: string[];
       urgency: "overdue" | "today" | "upcoming" | "done";
       reason: string;
+      weakSubtopics: Array<{ name: string; conf: "average" | "bad" }>;
     }> = [];
     Object.values(progress).forEach(entry => {
       if (entry.status !== "done") return;
-      const conf = entry.topicConfidence;
-      const probCount = entry.problemSteps?.length || 0;
+
       let qualifies = false;
       let reason = "";
-      if (conf === "bad") {
-        qualifies = true;
-        reason = "Marked Bad";
-      } else if (conf === "average" && probCount > 0) {
-        qualifies = true;
-        reason = `Average + ${probCount} problem step${probCount === 1 ? "" : "s"}`;
-      } else if (!conf && entry.rating > 0 && entry.rating <= 2) {
-        // Legacy data: pre-structured-review entries
-        qualifies = true;
-        reason = `${entry.rating}-star (legacy)`;
+      const weakSubtopics: Array<{ name: string; conf: "average" | "bad" }> = [];
+
+      const subMap = entry.subtopicConfidence;
+      if (subMap && Object.keys(subMap).length > 0) {
+        // Sub-topic data is the source of truth.
+        Object.entries(subMap).forEach(([name, c]) => {
+          if (c === "bad" || c === "average") weakSubtopics.push({ name, conf: c });
+        });
+        // sort: bad first, then average
+        weakSubtopics.sort((a, b) => (a.conf === b.conf ? 0 : a.conf === "bad" ? -1 : 1));
+        if (weakSubtopics.length > 0) {
+          qualifies = true;
+          const badN = weakSubtopics.filter(w => w.conf === "bad").length;
+          const avgN = weakSubtopics.filter(w => w.conf === "average").length;
+          reason = [badN ? `${badN} bad` : "", avgN ? `${avgN} avg` : ""].filter(Boolean).join(" + ");
+        }
+      } else {
+        // Legacy / fallback path
+        const conf = entry.topicConfidence;
+        const probCount = entry.problemSteps?.length || 0;
+        if (conf === "bad") {
+          qualifies = true;
+          reason = "Marked Bad";
+        } else if (conf === "average" && probCount > 0) {
+          qualifies = true;
+          reason = `Average + ${probCount} problem step${probCount === 1 ? "" : "s"}`;
+        } else if (!conf && entry.rating > 0 && entry.rating <= 2) {
+          qualifies = true;
+          reason = `${entry.rating}-star (legacy)`;
+        }
       }
+
       if (!qualifies) return;
       const task = allTasks.find(t => t.id === entry.taskId); if (!task) return;
       const dd = new Date(entry.date);
@@ -855,7 +996,7 @@ export default function App() {
       const nr = r1 > now ? r1 : r2 > now ? r2 : r3 > now ? r3 : null;
       let urgency: typeof items[0]["urgency"] = "done";
       if (nr) { const diff = Math.floor((nr.getTime() - now.getTime()) / 86400000); urgency = diff < 0 ? "overdue" : diff === 0 ? "today" : "upcoming"; }
-      items.push({ task, entry, revisitDates, urgency, reason });
+      items.push({ task, entry, revisitDates, urgency, reason, weakSubtopics });
     });
     items.sort((a, b) => ({ overdue: 0, today: 1, upcoming: 2, done: 3 })[a.urgency] - ({ overdue: 0, today: 1, upcoming: 2, done: 3 })[b.urgency]);
     return items;
@@ -1393,10 +1534,10 @@ export default function App() {
               </Card>
             )}
 
-            {/* Subject Focus */}
+            {/* Today's Focus — subject summary + every scheduled task with topic details */}
             <Card className="p-3.5">
               <p className="text-[16px] font-bold text-gray-400 uppercase tracking-widest mb-2.5">{isToday ? "Today's Focus" : "Day Focus"}</p>
-              <div className="flex gap-2">
+              <div className="flex gap-2 mb-3">
                 {subjects.map(s => {
                   const sc = SUBJ[s];
                   const subTasks = ts.filter(t => t.subject === s);
@@ -1410,33 +1551,23 @@ export default function App() {
                   );
                 })}
               </div>
-            </Card>
-
-            {/* Timetable */}
-            <Card className="p-4">
-              <p className="text-[16px] font-bold text-gray-400 uppercase tracking-widest mb-3">Suggested Timetable</p>
-              <div className="space-y-0">
-                {timeSlots.map(({ time, task }, i) => {
-                  const p_ = progress[task.id];
+              {/* Topic details for every task scheduled today */}
+              <div className="space-y-1.5 pt-2 border-t border-gray-100">
+                {ts.map(t => {
+                  const sc = SUBJ[t.subject];
+                  const p_ = progress[t.id];
                   const isDone = p_?.status === "done";
-                  const sc = SUBJ[task.subject];
                   return (
-                    <div key={task.id} className="flex gap-3">
-                      {/* Timeline */}
-                      <div className="flex flex-col items-center" style={{ width: 20 }}>
-                        <div className={`w-3 h-3 rounded-full flex-shrink-0 ${isDone ? "bg-emerald-500" : `bg-gradient-to-r ${sc.gradient}`} ring-2 ring-white`} />
-                        {i < timeSlots.length - 1 && <div className={`w-0.5 flex-1 min-h-[40px] ${isDone ? "bg-emerald-200" : "bg-gray-200"}`} />}
-                      </div>
-                      {/* Content */}
-                      <div className={`flex-1 pb-4 ${i < timeSlots.length - 1 ? "" : ""}`}>
-                        <p className={`text-[16px] font-bold uppercase tracking-wider ${isDone ? "text-emerald-500" : sc.text}`}>{time}</p>
-                        <p className={`text-[17px] font-semibold mt-0.5 ${isDone ? "line-through text-gray-400" : "text-gray-800"}`}>{task.topic}</p>
-                        <div className="flex items-center gap-1.5 mt-1">
+                    <div key={t.id} className="flex items-start gap-2 py-0.5">
+                      <span className={`w-2 h-2 mt-2 rounded-full flex-shrink-0 ${isDone ? "bg-emerald-500" : `bg-gradient-to-r ${sc.gradient}`}`} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           <Badge className={`bg-gradient-to-r ${sc.gradient} text-white uppercase`}>{sc.icon}</Badge>
-                          <Badge className={TYPE_BADGE[task.type]}>{task.type}</Badge>
-                          <span className="text-[16px] text-gray-400">{task.hours}h</span>
+                          <Badge className={TYPE_BADGE[t.type]}>{t.type}</Badge>
+                          <span className="text-[12px] text-gray-400 font-medium">{t.hours}h</span>
                         </div>
-                        {isDone && <p className="text-[16px] text-emerald-500 font-semibold mt-1">{"\u2705"} Completed</p>}
+                        <p className={`text-[14px] font-semibold leading-snug mt-0.5 ${isDone ? "line-through text-gray-400" : "text-gray-800"}`}>{t.topic}</p>
+                        <p className="text-[12px] text-gray-400">{t.chapterName}</p>
                       </div>
                     </div>
                   );
@@ -1444,13 +1575,8 @@ export default function App() {
               </div>
             </Card>
 
-            {/* Detailed Task Cards */}
-            <div>
-              <p className="text-[16px] font-bold text-gray-400 uppercase tracking-widest px-1 mb-2.5">Tasks &middot; Mark Progress</p>
-              <div className="space-y-2">{ts.map((t, i) => <TaskCard key={t.id} task={t} idx={i} />)}</div>
-            </div>
-
-            {/* Study Instructions */}
+            {/* Study Instructions — comes BEFORE Tasks / Mark Progress so Shweta
+                reads the steps first, then runs through the per-task review. */}
             <div className="rounded-2xl border-2 border-brand-400 bg-brand-50 overflow-hidden">
               <div className="bg-brand-500 px-4 py-3 flex items-center gap-2">
                 <span className="text-white text-lg">📋</span>
@@ -1473,6 +1599,12 @@ export default function App() {
                   </div>
                 ))}
               </div>
+            </div>
+
+            {/* Detailed Task Cards — moved BELOW Study Instructions */}
+            <div>
+              <p className="text-[16px] font-bold text-gray-400 uppercase tracking-widest px-1 mb-2.5">Tasks &middot; Mark Progress</p>
+              <div className="space-y-2">{ts.map((t, i) => <TaskCard key={t.id} task={t} idx={i} />)}</div>
             </div>
 
             {/* Quick Actions */}
@@ -1657,7 +1789,7 @@ export default function App() {
           <p className="text-[16px] text-brand-700 leading-relaxed">Tasks reviewed as <b>Bad</b>, or <b>Average with problem steps</b>, are auto-scheduled for revisits at <b>+3</b>, <b>+7</b>, and <b>+14</b> days.</p>
         </Card>
         {items.length === 0 && <EmptyState icon="\uD83C\uDFAF" title="No weak topics" subtitle="Tasks marked Bad, or Average with problems, will appear here" />}
-        {items.map(({ task, entry, revisitDates, urgency, reason }, i) => (
+        {items.map(({ task, entry, revisitDates, urgency, reason, weakSubtopics }, i) => (
           <Card key={task.id} className={`p-3.5 ${urgencyStyle[urgency]}`}>
             <div style={{ animationDelay: `${i * 40}ms` }} className="animate-fade-in-up">
               <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
@@ -1667,6 +1799,19 @@ export default function App() {
               </div>
               <p className="text-[17px] font-semibold text-gray-800">{task.chapterName}</p>
               <p className="text-[17px] text-gray-400 mt-0.5">{task.topic}</p>
+              {/* Weak sub-topics — exact things to re-cover */}
+              {weakSubtopics.length > 0 && (
+                <div className="mt-2">
+                  <p className="text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-1">Re-cover</p>
+                  <div className="flex flex-wrap gap-1">
+                    {weakSubtopics.map(w => (
+                      <span key={w.name} className={`text-[11px] font-semibold px-1.5 py-0.5 rounded ring-1 ${w.conf === "bad" ? "bg-red-100 text-red-700 ring-red-200" : "bg-amber-100 text-amber-700 ring-amber-200"}`}>
+                        {w.conf === "bad" ? "👎" : "🤔"} {w.name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
               {entry.topicsCovered && entry.topicsCovered.length > 0 && (
                 <div className="mt-1.5 flex flex-wrap gap-1">
                   {entry.topicsCovered.map(t => (
@@ -1676,7 +1821,19 @@ export default function App() {
               )}
               <p className="text-[16px] text-gray-400 mt-2 font-medium">Revisit: {revisitDates.join(" \u2022 ")}</p>
               {(urgency === "overdue" || urgency === "today") && (
-                <button onClick={() => markTask(task.id, "done", 4, { topicConfidence: "good" })} className="text-[17px] bg-emerald-600 text-white px-4 py-1.5 rounded-lg mt-2.5 hover:bg-emerald-700 active:scale-95 font-semibold transition-all shadow-sm shadow-emerald-600/20">Mark Revised</button>
+                <button
+                  onClick={() => {
+                    // Mark Revised: lift every weak sub-topic to "good", and
+                    // also lift the overall confidence to "good".
+                    const cleared: Record<string, "good" | "average" | "bad"> = { ...(entry.subtopicConfidence || {}) };
+                    weakSubtopics.forEach(w => { cleared[w.name] = "good"; });
+                    markTask(task.id, "done", 5, {
+                      topicConfidence: "good",
+                      subtopicConfidence: Object.keys(cleared).length > 0 ? cleared : undefined,
+                    });
+                  }}
+                  className="text-[17px] bg-emerald-600 text-white px-4 py-1.5 rounded-lg mt-2.5 hover:bg-emerald-700 active:scale-95 font-semibold transition-all shadow-sm shadow-emerald-600/20"
+                >Mark Revised</button>
               )}
             </div>
           </Card>
@@ -2757,17 +2914,49 @@ export default function App() {
         <div className="max-w-2xl mx-auto px-4">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-3">
-              {/* Stacked avatars: Shikhar (front) + Shweta (back) */}
-              <div className="flex items-center" style={{ position: "relative", width: 56, height: 36 }}>
-                <Avatar name="Shweta" src="/shweta.jpg" size={36} fallbackBg="from-pink-400 to-rose-500" style={{ position: "absolute", left: 0, zIndex: 1, border: "2px solid #fff" }} />
-                <Avatar name="Shikhar" src="/shikhar.jpg" size={36} fallbackBg="from-brand-500 to-brand-700" style={{ position: "absolute", left: 20, zIndex: 2, border: "2px solid #fff" }} />
+              {/* Side-by-side avatars (no overlap) — Shweta then Shikhar.
+                  Each photo is zoomed in on the face via Avatar's imgScale +
+                  imgPosition props. */}
+              <div className="flex items-center gap-1.5">
+                <Avatar
+                  name="Shweta"
+                  src="/shweta.jpg"
+                  size={36}
+                  fallbackBg="from-pink-400 to-rose-500"
+                  imgScale={1.4}
+                  imgPosition="center 25%"
+                  style={{ border: "2px solid #fff" }}
+                />
+                <Avatar
+                  name="Shikhar"
+                  src="/shikhar.jpg"
+                  size={36}
+                  fallbackBg="from-brand-500 to-brand-700"
+                  imgScale={1.4}
+                  imgPosition="center 25%"
+                  style={{ border: "2px solid #fff" }}
+                />
               </div>
               <div>
                 <h1 className="text-[15px] font-bold text-gray-900 leading-tight tracking-tight">Shikhar Prep Monitor</h1>
                 <p className="text-[12px] text-gray-400 font-medium">Managed by Shweta &middot; Week {actW}</p>
               </div>
             </div>
-            {behind > 5 && <div className="bg-red-50 text-red-600 text-[12px] font-bold px-2.5 py-1 rounded-full ring-1 ring-red-500/10">{behind} behind</div>}
+            <div className="flex items-center gap-2">
+              {behind > 5 && <div className="bg-red-50 text-red-600 text-[12px] font-bold px-2.5 py-1 rounded-full ring-1 ring-red-500/10">{behind} behind</div>}
+              {/* Settings (gear) — always-reachable entry into AdjustView so the
+                  Reset All Data / Bulk Actions / Tutor Notes are never buried. */}
+              <button
+                onClick={() => setView("adjust")}
+                aria-label="Settings"
+                className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all active:scale-90 ${view === "adjust" ? "bg-brand-50 text-brand-600 ring-1 ring-brand-200" : "text-gray-400 hover:bg-gray-50 hover:text-gray-600"}`}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                </svg>
+              </button>
+            </div>
           </div>
         </div>
       </div>
