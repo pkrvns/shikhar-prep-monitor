@@ -36,6 +36,7 @@ interface ProgressEntry {
   completedSteps?: number[];      // indexes of study instructions Shikhar completed
   problemSteps?: number[];        // indexes of study instructions that caused trouble
   topicConfidence?: "good" | "average" | "bad"; // replaces the old emoji star rating
+  topicsCovered?: string[];       // sub-topics within the assignment scope that were actually covered
   completionNote?: string;        // optional 1-line free-text reflection
 }
 
@@ -278,7 +279,7 @@ type MarkTaskFn = (
   tid: string,
   st: TaskStatus,
   rat?: number,
-  extras?: Partial<Pick<ProgressEntry, "completedSteps" | "problemSteps" | "topicConfidence" | "completionNote">>,
+  extras?: Partial<Pick<ProgressEntry, "completedSteps" | "problemSteps" | "topicConfidence" | "topicsCovered" | "completionNote">>,
 ) => void;
 
 function confLabel(c: "good" | "average" | "bad") {
@@ -312,6 +313,8 @@ function TaskCardImpl({
   const [draftCompleted, setDraftCompleted] = useState<Set<number>>(() => new Set(entry?.completedSteps || []));
   const [draftProblems, setDraftProblems] = useState<Set<number>>(() => new Set(entry?.problemSteps || []));
   const [draftConfidence, setDraftConfidence] = useState<"good" | "average" | "bad" | "">(entry?.topicConfidence || "");
+  const [draftTopics, setDraftTopics] = useState<string[]>(entry?.topicsCovered || []);
+  const [topicInput, setTopicInput] = useState("");
   const [draftNote, setDraftNote] = useState<string>(entry?.completionNote || "");
 
   // When the user clicks Edit on a previously-saved task, refill the draft
@@ -321,9 +324,19 @@ function TaskCardImpl({
     setDraftCompleted(new Set(entry?.completedSteps || []));
     setDraftProblems(new Set(entry?.problemSteps || []));
     setDraftConfidence(entry?.topicConfidence || "");
+    setDraftTopics(entry?.topicsCovered || []);
+    setTopicInput("");
     setDraftNote(entry?.completionNote || "");
     setShowReview(true);
   };
+
+  const addTopic = (raw: string) => {
+    const t = raw.trim().replace(/,$/, "").trim();
+    if (!t) return;
+    setDraftTopics(prev => (prev.includes(t) ? prev : [...prev, t]));
+    setTopicInput("");
+  };
+  const removeTopic = (t: string) => setDraftTopics(prev => prev.filter(x => x !== t));
 
   const toggleSet = (
     set: Set<number>,
@@ -338,10 +351,16 @@ function TaskCardImpl({
 
   const submitReview = () => {
     if (!draftConfidence) return;
+    // If the user typed a topic but didn't press Add/Enter, capture it.
+    const pendingTopic = topicInput.trim();
+    const finalTopics = pendingTopic && !draftTopics.includes(pendingTopic)
+      ? [...draftTopics, pendingTopic]
+      : draftTopics;
     markTask(task.id, "done", CONFIDENCE_TO_RATING[draftConfidence], {
       completedSteps: Array.from(draftCompleted).sort((a, b) => a - b),
       problemSteps: Array.from(draftProblems).sort((a, b) => a - b),
       topicConfidence: draftConfidence,
+      topicsCovered: finalTopics.length > 0 ? finalTopics : undefined,
       completionNote: draftNote.trim() || undefined,
     });
     setShowReview(false);
@@ -381,6 +400,13 @@ function TaskCardImpl({
               )}
             </div>
           )}
+          {entry?.topicsCovered && entry.topicsCovered.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {entry.topicsCovered.map(t => (
+                <span key={t} className="text-[11px] bg-white/70 text-gray-600 px-1.5 py-0.5 rounded ring-1 ring-gray-200">{t}</span>
+              ))}
+            </div>
+          )}
           {entry?.completionNote && (
             <p className="text-[12px] text-gray-500 italic mt-1.5">&ldquo;{entry.completionNote}&rdquo;</p>
           )}
@@ -407,9 +433,15 @@ function TaskCardImpl({
       {showReview && (
         <div className="mt-3 pt-3 border-t border-gray-200/60 space-y-4">
           <div>
-            <p className="text-[12px] font-bold text-gray-500 uppercase tracking-widest mb-2">Study Instructions for {task.type}</p>
-            <p className="text-[11px] text-gray-400 mb-2">Tick what was completed. Mark &#9888; on any step that gave trouble.</p>
-            <ol className="space-y-1.5">
+            <p className="text-[12px] font-bold text-gray-500 uppercase tracking-widest mb-1">Study Instructions for {task.type}</p>
+            <p className="text-[11px] text-gray-400 mb-2">For each step, tap the green box if it was done, the amber box if it caused trouble.</p>
+            {/* Column headers so the two checkbox columns are unambiguous */}
+            <div className="flex items-center gap-2 mb-1.5 pl-0.5">
+              <span className="w-7 text-center text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Done</span>
+              <span className="w-7 text-center text-[10px] font-bold text-amber-600 uppercase tracking-wider">Issue</span>
+              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Step</span>
+            </div>
+            <ol className="space-y-2">
               {steps.map((step, i) => {
                 const done = draftCompleted.has(i);
                 const trouble = draftProblems.has(i);
@@ -418,20 +450,59 @@ function TaskCardImpl({
                     <button
                       type="button"
                       onClick={() => toggleSet(draftCompleted, setDraftCompleted, i)}
-                      className={`w-6 h-6 rounded-md border-2 flex-shrink-0 mt-0.5 flex items-center justify-center text-[11px] font-bold transition-all active:scale-90 ${done ? "bg-emerald-500 border-emerald-500 text-white" : "border-gray-300 bg-white text-transparent"}`}
-                      aria-label="Mark step done"
+                      className={`w-7 h-7 rounded-md border-2 flex-shrink-0 mt-0.5 flex items-center justify-center text-[14px] font-bold transition-all active:scale-90 ${done ? "bg-emerald-500 border-emerald-500 text-white shadow-sm" : "border-emerald-300 bg-white text-emerald-300 hover:bg-emerald-50"}`}
+                      aria-label={done ? "Step done — tap to clear" : "Mark step done"}
                     >&#10003;</button>
                     <button
                       type="button"
                       onClick={() => toggleSet(draftProblems, setDraftProblems, i)}
-                      className={`w-6 h-6 rounded-md border-2 flex-shrink-0 mt-0.5 flex items-center justify-center text-[11px] font-bold transition-all active:scale-90 ${trouble ? "bg-amber-400 border-amber-400 text-white" : "border-gray-300 bg-white text-transparent"}`}
-                      aria-label="Mark step as a problem"
-                    >&#9888;</button>
-                    <p className={`text-[13px] leading-snug flex-1 ${done ? "text-gray-700" : "text-gray-600"}`}>{step}</p>
+                      className={`w-7 h-7 rounded-md border-2 flex-shrink-0 mt-0.5 flex items-center justify-center text-[14px] font-bold transition-all active:scale-90 ${trouble ? "bg-amber-400 border-amber-400 text-white shadow-sm" : "border-amber-300 bg-white text-amber-300 hover:bg-amber-50"}`}
+                      aria-label={trouble ? "Step had a problem — tap to clear" : "Mark step as a problem"}
+                    >!</button>
+                    <p className={`text-[13px] leading-snug flex-1 pt-1 ${done ? "text-gray-700" : "text-gray-600"}`}>{step}</p>
                   </li>
                 );
               })}
             </ol>
+          </div>
+
+          {/* Topics covered in this assignment scope */}
+          <div>
+            <p className="text-[12px] font-bold text-gray-500 uppercase tracking-widest mb-1">Topics covered</p>
+            <p className="text-[11px] text-gray-400 mb-2">List the sub-topics from <span className="font-semibold text-gray-500">{task.chapterName}</span> that were actually covered today.</p>
+            {draftTopics.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {draftTopics.map(t => (
+                  <span key={t} className="inline-flex items-center gap-1 bg-brand-50 text-brand-700 text-[12px] font-semibold px-2 py-1 rounded-full ring-1 ring-brand-200">
+                    {t}
+                    <button type="button" onClick={() => removeTopic(t)} className="text-brand-400 hover:text-brand-700" aria-label={`Remove ${t}`}>&times;</button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={topicInput}
+                onChange={e => {
+                  const v = e.target.value;
+                  // Comma auto-commits a topic so the user can type "limits, derivatives, " quickly.
+                  if (v.endsWith(",")) addTopic(v);
+                  else setTopicInput(v);
+                }}
+                onKeyDown={e => {
+                  if (e.key === "Enter") { e.preventDefault(); addTopic(topicInput); }
+                }}
+                placeholder="e.g. limits, continuity, L'Hopital"
+                className="flex-1 text-[13px] text-gray-700 border border-gray-200 rounded-xl px-3 py-2 bg-white"
+              />
+              <button
+                type="button"
+                onClick={() => addTopic(topicInput)}
+                disabled={!topicInput.trim()}
+                className="text-[13px] bg-gray-100 disabled:opacity-40 text-gray-700 px-3 py-2 rounded-xl font-semibold active:scale-95"
+              >Add</button>
+            </div>
           </div>
 
           <div>
@@ -653,7 +724,7 @@ export default function App() {
   const flash = useCallback((m: string, f = 880) => { setToast(m); playBeep(f); setTimeout(() => setToast(""), 2200); }, []);
   const chgActW = useCallback((w: number) => { setActW(w); saveData("shikhar-active-week", w); flash(`Week ${w} active`, 660); }, [flash]);
 
-  const markTask = useCallback((tid: string, st: TaskStatus, rat = 0, extras?: Partial<Pick<ProgressEntry, "completedSteps" | "problemSteps" | "topicConfidence" | "completionNote">>) => {
+  const markTask = useCallback((tid: string, st: TaskStatus, rat = 0, extras?: Partial<Pick<ProgressEntry, "completedSteps" | "problemSteps" | "topicConfidence" | "topicsCovered" | "completionNote">>) => {
     setProgress(prev => {
       // Preserve any existing review fields when toggling status only.
       const existing = prev[tid];
@@ -666,6 +737,7 @@ export default function App() {
         completedSteps: extras?.completedSteps ?? existing?.completedSteps,
         problemSteps: extras?.problemSteps ?? existing?.problemSteps,
         topicConfidence: extras?.topicConfidence ?? existing?.topicConfidence,
+        topicsCovered: extras?.topicsCovered ?? existing?.topicsCovered,
         completionNote: extras?.completionNote ?? existing?.completionNote,
       };
       const u = { ...prev, [tid]: merged };
@@ -739,10 +811,40 @@ export default function App() {
     return count;
   })();
 
+  // A completed task qualifies for spaced revisit when its STRUCTURED REVIEW
+  // signals weakness:
+  //   • topicConfidence === "bad"                          → always revisit
+  //   • topicConfidence === "average" AND ≥1 problem step  → revisit
+  //   • topicConfidence === "average" AND no problem step  → skip (just OK)
+  //   • topicConfidence === "good"                          → never
+  // Legacy fallback: if a done entry has no topicConfidence (old data),
+  // fall back to the legacy 1-2 star rating so existing entries still work.
   const getRevisitItems = () => {
-    const weak = Object.values(progress).filter(p => p.status === "done" && p.rating > 0 && p.rating <= 2);
-    const items: Array<{ task: DayTask; entry: ProgressEntry; revisitDates: string[]; urgency: "overdue" | "today" | "upcoming" | "done" }> = [];
-    weak.forEach(entry => {
+    const items: Array<{
+      task: DayTask;
+      entry: ProgressEntry;
+      revisitDates: string[];
+      urgency: "overdue" | "today" | "upcoming" | "done";
+      reason: string;
+    }> = [];
+    Object.values(progress).forEach(entry => {
+      if (entry.status !== "done") return;
+      const conf = entry.topicConfidence;
+      const probCount = entry.problemSteps?.length || 0;
+      let qualifies = false;
+      let reason = "";
+      if (conf === "bad") {
+        qualifies = true;
+        reason = "Marked Bad";
+      } else if (conf === "average" && probCount > 0) {
+        qualifies = true;
+        reason = `Average + ${probCount} problem step${probCount === 1 ? "" : "s"}`;
+      } else if (!conf && entry.rating > 0 && entry.rating <= 2) {
+        // Legacy data: pre-structured-review entries
+        qualifies = true;
+        reason = `${entry.rating}-star (legacy)`;
+      }
+      if (!qualifies) return;
       const task = allTasks.find(t => t.id === entry.taskId); if (!task) return;
       const dd = new Date(entry.date);
       const r1 = new Date(dd); r1.setDate(r1.getDate() + 3);
@@ -753,7 +855,7 @@ export default function App() {
       const nr = r1 > now ? r1 : r2 > now ? r2 : r3 > now ? r3 : null;
       let urgency: typeof items[0]["urgency"] = "done";
       if (nr) { const diff = Math.floor((nr.getTime() - now.getTime()) / 86400000); urgency = diff < 0 ? "overdue" : diff === 0 ? "today" : "upcoming"; }
-      items.push({ task, entry, revisitDates, urgency });
+      items.push({ task, entry, revisitDates, urgency, reason });
     });
     items.sort((a, b) => ({ overdue: 0, today: 1, upcoming: 2, done: 3 })[a.urgency] - ({ overdue: 0, today: 1, upcoming: 2, done: 3 })[b.urgency]);
     return items;
@@ -1552,21 +1654,29 @@ export default function App() {
       <div className="space-y-4 animate-fade-in-up">
         <SectionTitle>Spaced Repetition</SectionTitle>
         <Card className="p-3.5 bg-brand-50/50 border-brand-100">
-          <p className="text-[16px] text-brand-700 leading-relaxed">Topics rated 1-2 stars are automatically scheduled for revisits at <b>+3</b>, <b>+7</b>, and <b>+14</b> days.</p>
+          <p className="text-[16px] text-brand-700 leading-relaxed">Tasks reviewed as <b>Bad</b>, or <b>Average with problem steps</b>, are auto-scheduled for revisits at <b>+3</b>, <b>+7</b>, and <b>+14</b> days.</p>
         </Card>
-        {items.length === 0 && <EmptyState icon="\uD83C\uDFAF" title="No weak topics" subtitle="Topics rated 1-2 stars will appear here" />}
-        {items.map(({ task, revisitDates, urgency }, i) => (
+        {items.length === 0 && <EmptyState icon="\uD83C\uDFAF" title="No weak topics" subtitle="Tasks marked Bad, or Average with problems, will appear here" />}
+        {items.map(({ task, entry, revisitDates, urgency, reason }, i) => (
           <Card key={task.id} className={`p-3.5 ${urgencyStyle[urgency]}`}>
             <div style={{ animationDelay: `${i * 40}ms` }} className="animate-fade-in-up">
-              <div className="flex items-center gap-1.5 mb-1.5">
+              <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
                 <Badge className={`bg-gradient-to-r ${SUBJ[task.subject].gradient} text-white uppercase`}>{SUBJ[task.subject].icon}</Badge>
                 <Badge className={urgencyLabel[urgency]}>{urgency.toUpperCase()}</Badge>
+                <Badge className="bg-gray-100 text-gray-600">{reason}</Badge>
               </div>
               <p className="text-[17px] font-semibold text-gray-800">{task.chapterName}</p>
               <p className="text-[17px] text-gray-400 mt-0.5">{task.topic}</p>
+              {entry.topicsCovered && entry.topicsCovered.length > 0 && (
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                  {entry.topicsCovered.map(t => (
+                    <span key={t} className="text-[11px] bg-white/70 text-gray-600 px-1.5 py-0.5 rounded ring-1 ring-gray-200">{t}</span>
+                  ))}
+                </div>
+              )}
               <p className="text-[16px] text-gray-400 mt-2 font-medium">Revisit: {revisitDates.join(" \u2022 ")}</p>
               {(urgency === "overdue" || urgency === "today") && (
-                <button onClick={() => markTask(task.id, "done", 4)} className="text-[17px] bg-emerald-600 text-white px-4 py-1.5 rounded-lg mt-2.5 hover:bg-emerald-700 active:scale-95 font-semibold transition-all shadow-sm shadow-emerald-600/20">Mark Revised</button>
+                <button onClick={() => markTask(task.id, "done", 4, { topicConfidence: "good" })} className="text-[17px] bg-emerald-600 text-white px-4 py-1.5 rounded-lg mt-2.5 hover:bg-emerald-700 active:scale-95 font-semibold transition-all shadow-sm shadow-emerald-600/20">Mark Revised</button>
               )}
             </div>
           </Card>
@@ -2577,9 +2687,22 @@ export default function App() {
     };
     const reset = () => {
       if (!confirmReset) { setConfirmReset(true); return; }
-      setProgress({}); setNotes({}); setErrors([]);
-      saveData("shikhar-progress", {}); saveData("shikhar-notes", {}); saveData("shikhar-errors", []);
-      flash("All data reset", 330); setConfirmReset(false);
+      // Wipe in-memory state
+      setProgress({});
+      setNotes({});
+      setErrors([]);
+      setReports({});
+      setSubmissions([]);
+      // Wipe every shikhar-* key in localStorage so nothing lingers (covers
+      // future keys we forget to add explicitly).
+      try {
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith("shikhar-")) localStorage.removeItem(k);
+        }
+      } catch (e) { console.error(e); }
+      flash("All data reset", 330);
+      setConfirmReset(false);
     };
     const inputCls = "w-full text-[17px] text-gray-700 border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-300 bg-white transition-all";
 
