@@ -593,17 +593,25 @@ export default function App() {
     const fullDayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
     void fullDayNames;
 
+    // Format Date as local YYYY-MM-DD (NOT toISOString — that gives UTC and breaks for IST)
+    const fmtLocalISO = (d: Date) => {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      return `${y}-${m}-${day}`;
+    };
+
     // Schedule range: 28 weeks starting Monday April 6, 2026
     const SCHEDULE_START = new Date(2026, 3, 6);
     const SCHEDULE_END = new Date(2026, 3, 6); SCHEDULE_END.setDate(SCHEDULE_END.getDate() + 28 * 7 - 1);
 
     const todayDate = new Date(); todayDate.setHours(0, 0, 0, 0);
-    const isoToday = todayDate.toISOString().slice(0, 10);
+    const isoToday = fmtLocalISO(todayDate);
 
     // Date navigation state — defaults to today (clamped to schedule range)
     const [viewDateISO, setViewDateISO] = useState<string>(() => {
-      if (todayDate < SCHEDULE_START) return SCHEDULE_START.toISOString().slice(0, 10);
-      if (todayDate > SCHEDULE_END) return SCHEDULE_END.toISOString().slice(0, 10);
+      if (todayDate < SCHEDULE_START) return fmtLocalISO(SCHEDULE_START);
+      if (todayDate > SCHEDULE_END) return fmtLocalISO(SCHEDULE_END);
       return isoToday;
     });
 
@@ -623,11 +631,11 @@ export default function App() {
       const d = new Date(viewDate); d.setDate(d.getDate() + delta);
       if (d < SCHEDULE_START) return;
       if (d > SCHEDULE_END) return;
-      setViewDateISO(d.toISOString().slice(0, 10));
+      setViewDateISO(fmtLocalISO(d));
     };
     const goToday = () => setViewDateISO(isoToday);
-    const minISO = SCHEDULE_START.toISOString().slice(0, 10);
-    const maxISO = SCHEDULE_END.toISOString().slice(0, 10);
+    const minISO = fmtLocalISO(SCHEDULE_START);
+    const maxISO = fmtLocalISO(SCHEDULE_END);
     const canPrev = new Date(viewDate.getTime() - 86400000) >= SCHEDULE_START;
     const canNext = new Date(viewDate.getTime() + 86400000) <= SCHEDULE_END;
 
