@@ -3362,12 +3362,12 @@ export default function App() {
   ];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "#f8fafc", overflow: "hidden" }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%", maxWidth: "100vw", background: "#f8fafc", overflow: "hidden" }}>
       {/* Header */}
-      <div style={{ flexShrink: 0, background: "#fff", borderBottom: "1px solid #e5e7eb", zIndex: 20, paddingTop: "env(safe-area-inset-top)" }}>
+      <div style={{ flexShrink: 0, background: "#fff", borderBottom: "1px solid #e5e7eb", zIndex: 20, paddingTop: "env(safe-area-inset-top)", width: "100%", overflowX: "hidden" }}>
         <div className="max-w-2xl mx-auto px-4">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-3">
+          <div className="flex items-center justify-between h-16 gap-2 min-w-0">
+            <div className="flex items-center gap-3 min-w-0 flex-1">
               {/* Side-by-side avatars (no overlap) — Shweta then Shikhar.
                   Each photo is zoomed in on the face via Avatar's imgScale +
                   imgPosition props. */}
@@ -3391,12 +3391,12 @@ export default function App() {
                   style={{ border: "2px solid #fff" }}
                 />
               </div>
-              <div>
-                <h1 className="text-[15px] font-bold text-gray-900 leading-tight tracking-tight">Shikhar Prep Monitor</h1>
-                <p className="text-[12px] text-gray-400 font-medium">Managed by Shweta &middot; Week {actW}</p>
+              <div className="min-w-0 flex-1">
+                <h1 className="text-[15px] font-bold text-gray-900 leading-tight tracking-tight truncate">Shikhar Prep Monitor</h1>
+                <p className="text-[12px] text-gray-400 font-medium truncate">Managed by Shweta &middot; Week {actW}</p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-shrink-0">
               {behind > 5 && <div className="bg-red-50 text-red-600 text-[12px] font-bold px-2.5 py-1 rounded-full ring-1 ring-red-500/10">{behind} behind</div>}
               {/* Settings (gear) — always-reachable entry into AdjustView so the
                   Reset All Data / Bulk Actions / Tutor Notes are never buried. */}
@@ -3456,7 +3456,7 @@ export default function App() {
       )}
 
       {/* Scrollable Content */}
-      <div style={{ flex: 1, overflowY: "auto", WebkitOverflowScrolling: "touch" }}>
+      <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden", WebkitOverflowScrolling: "touch", width: "100%" }}>
         <div className="max-w-2xl mx-auto px-4 pt-5 pb-6">
           {view === "dashboard" && <DashboardView />}
           {view === "schedule" && <ScheduleView />}
@@ -3475,7 +3475,7 @@ export default function App() {
       </div>
 
       {/* Bottom Navigation */}
-      <nav style={{ flexShrink: 0, background: "#ffffff", borderTop: "1px solid #e5e7eb", boxShadow: "0 -2px 10px rgba(0,0,0,0.06)", zIndex: 20, paddingBottom: "env(safe-area-inset-bottom)" }}>
+      <nav style={{ flexShrink: 0, background: "#ffffff", borderTop: "1px solid #e5e7eb", boxShadow: "0 -2px 10px rgba(0,0,0,0.06)", zIndex: 20, paddingBottom: "env(safe-area-inset-bottom)", width: "100%", overflowX: "hidden" }}>
         <div className="max-w-2xl mx-auto px-1">
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-around", padding: "8px 0 10px" }}>
             {navItems.map(({ v, label, icon }) => (
