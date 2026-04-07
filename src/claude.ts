@@ -105,12 +105,24 @@ async function downscaleImage(file: File, maxDim: number): Promise<string> {
 
 // ---------- High-level helpers ----------
 
+export interface PriorAttemptCtx {
+  attemptNum: number;
+  submittedAt: string; // ISO
+  verdict: "correct" | "partial" | "incorrect";
+  marks_awarded: number;
+  marks_max: number;
+  summary: string;
+  mistakes: Array<{ type: string; what_went_wrong: string; correct_approach: string }>;
+}
+
 export interface AnalyzeWorkInput {
   taskTopic: string;
   taskSubject: string;
   taskChapter: string;
+  taskDate?: string; // YYYY-MM-DD that this work was assigned for
   images: ImageBlock[];
   studentName?: string;
+  priorAttempts?: PriorAttemptCtx[]; // history of previous submissions for the SAME task
 }
 
 export interface AnalyzeWorkResult {
@@ -124,11 +136,30 @@ export interface AnalyzeWorkResult {
     correct_approach: string;
   }>;
   next_steps: string;
+  // Only present when priorAttempts were supplied:
+  improvement?: {
+    direction: "improved" | "declined" | "same";
+    fixed_mistakes: string[];     // mistakes from previous attempt that are now resolved
+    repeated_mistakes: string[];  // mistakes that still persist
+    new_mistakes: string[];       // brand-new mistakes introduced this attempt
+    note: string;                 // 1-2 sentence narrative comparing to last attempt
+  };
 }
 
 export async function analyzeWork(input: AnalyzeWorkInput): Promise<{ ok: true; data: AnalyzeWorkResult } | { ok: false; error: string }> {
+  const hasHistory = !!(input.priorAttempts && input.priorAttempts.length > 0);
+
   const sys = `You are Shweta's AI assistant grading her son ${input.studentName || "Shikhar"}'s CBSE Class 12 work.
-You are strict but encouraging, and you grade as a CBSE board examiner would.
+You are strict but encouraging, and you grade EXACTLY as a CBSE board examiner would.
+${hasHistory
+  ? `IMPORTANT: This is a RE-ATTEMPT. You will be given the previous attempt's verdict, marks, and mistakes.
+You MUST:
+1. Grade THIS attempt strictly on its own merits (don't carry over old marks).
+2. Compare it against the previous attempt and report which mistakes were FIXED, which were REPEATED, and which are NEW.
+3. Decide overall direction: improved / declined / same.
+4. Be specific in the improvement note — name the concept that improved or regressed.`
+  : ""}
+
 Always respond with VALID JSON ONLY, no markdown fences, matching this exact schema:
 {
   "verdict": "correct" | "partial" | "incorrect",
@@ -142,16 +173,32 @@ Always respond with VALID JSON ONLY, no markdown fences, matching this exact sch
       "correct_approach": "step-by-step correct method"
     }
   ],
-  "next_steps": "1 sentence: what to practice next"
+  "next_steps": "1 sentence: what to practice next"${hasHistory ? `,
+  "improvement": {
+    "direction": "improved" | "declined" | "same",
+    "fixed_mistakes": ["..."],
+    "repeated_mistakes": ["..."],
+    "new_mistakes": ["..."],
+    "note": "1-2 sentences comparing this attempt vs the previous one"
+  }` : ""}
 }
 If the work is fully correct, return mistakes: [].`;
 
-  const userText = `Task assigned today:
+  const historyBlock = hasHistory
+    ? `\n\nPREVIOUS ATTEMPTS for this exact task (oldest first):
+${input.priorAttempts!.map(p => `--- Attempt #${p.attemptNum} (${new Date(p.submittedAt).toLocaleString("en-IN")}) ---
+Verdict: ${p.verdict.toUpperCase()}  Marks: ${p.marks_awarded}/${p.marks_max}
+Summary: ${p.summary}
+Mistakes:
+${p.mistakes.length === 0 ? "  (none)" : p.mistakes.map(m => `  • [${m.type}] ${m.what_went_wrong}`).join("\n")}`).join("\n\n")}
+
+The attached photos are Shikhar's NEW attempt at the same task. Compare against the previous attempts above.`
+    : "\n\nThe attached photo(s) are Shikhar's solved work for this task. Please grade and analyze.";
+
+  const userText = `Task assigned${input.taskDate ? ` for ${input.taskDate}` : " today"}:
 - Subject: ${input.taskSubject}
 - Chapter: ${input.taskChapter}
-- Topic: ${input.taskTopic}
-
-The attached photo(s) are Shikhar's solved work for this task. Please grade and analyze.`;
+- Topic: ${input.taskTopic}${historyBlock}`;
 
   const result = await callClaude({
     system: sys,
@@ -184,6 +231,41 @@ The attached photo(s) are Shikhar's solved work for this task. Please grade and 
     return { ok: false, error: "Claude returned non-JSON: " + result.text.slice(0, 250) };
   }
   return { ok: true, data: parsed };
+}
+
+// Generate a personalised improvement tip for a single error journal entry.
+export interface ErrorTipInput {
+  subject: string;       // physics / chemistry / maths
+  chapter: string;
+  topic: string;
+  errorType: string;     // silly / concept / formula / time / reading
+  whatWentWrong: string;
+  correctApproach: string;
+  studentName?: string;
+}
+export async function suggestErrorFix(input: ErrorTipInput): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
+  const sys = `You are ${input.studentName || "Shikhar"}'s personal CBSE Class 12 tutor.
+You are looking at ONE specific past mistake from his error journal.
+Write a SHORT, actionable improvement tip (max 80 words) that includes:
+1. The single root cause of this kind of mistake (1 sentence).
+2. ONE concrete drill or exercise he should do this week to fix it (1 sentence).
+3. A 1-line memory trick or rule he can use during exams to avoid repeating it.
+Plain text only. No markdown, no headings, no bullet symbols.`;
+
+  const userText = `Subject: ${input.subject}
+Chapter: ${input.chapter}
+Topic: ${input.topic}
+Error type: ${input.errorType}
+What went wrong: ${input.whatWentWrong}
+Correct approach: ${input.correctApproach}
+
+Give the improvement tip now.`;
+
+  return callClaude({
+    system: sys,
+    max_tokens: 350,
+    messages: [{ role: "user", content: userText }],
+  });
 }
 
 export async function solveDoubt(question: string, image?: ImageBlock): Promise<{ ok: true; text: string } | { ok: false; error: string }> {

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRegisterSW } from "virtual:pwa-register/react";
 import { SYLLABUS_LINKS, SAMPLE_PAPERS, PYQ_LINKS, GENERAL_RESOURCES, FORMULAS, PYQ_PRIORITIES, TEST_PAPERS, TAG_COLORS, type LinkSection } from "./data";
-import { analyzeWork, solveDoubt, generateDailyReport, fileToImageBlock, type ImageBlock, type AnalyzeWorkResult } from "./claude";
+import { analyzeWork, solveDoubt, generateDailyReport, suggestErrorFix, fileToImageBlock, type ImageBlock, type AnalyzeWorkResult, type PriorAttemptCtx } from "./claude";
 
 type Subject = "physics" | "chemistry" | "maths";
 type Phase = "foundation" | "practice" | "mock";
@@ -45,6 +45,30 @@ interface ErrorEntry {
   whatWentWrong: string;
   correctApproach: string;
   resolved: boolean;
+  claudeTip?: string; // personalised improvement suggestion from Claude
+}
+
+// One Claude analysis of one upload of one task. Many submissions can exist
+// for the same (taskId, date) pair — that's how we track improvement.
+interface WorkSubmission {
+  id: string;
+  taskId: string;
+  date: string;          // YYYY-MM-DD the assignment is FOR
+  submittedAt: string;   // ISO timestamp of upload
+  attemptNum: number;    // 1, 2, 3...
+  verdict: "correct" | "partial" | "incorrect";
+  marksAwarded: number;
+  marksMax: number;
+  summary: string;
+  mistakes: Array<{ type: string; what_went_wrong: string; correct_approach: string }>;
+  nextSteps: string;
+  improvement?: {
+    direction: "improved" | "declined" | "same";
+    fixed_mistakes: string[];
+    repeated_mistakes: string[];
+    new_mistakes: string[];
+    note: string;
+  };
 }
 
 const PHYS_CH = ["Electric Charges and Fields","Electrostatic Potential & Capacitance","Current Electricity","Moving Charges and Magnetism","Magnetism and Matter","Electromagnetic Induction","Alternating Currents","Electromagnetic Waves","Ray Optics & Optical Instruments","Wave Optics","Dual Nature of Radiation & Matter","Atoms","Nuclei","Semiconductor Electronics"];
@@ -273,12 +297,16 @@ export default function App() {
   // re-render (e.g. when addError or flash fires). Local useState inside CheckView
   // would be wiped. So we keep all of its state here.
   const [checkTab, setCheckTab] = useState<"work" | "doubt" | "report">("work");
+  const [checkDate, setCheckDate] = useState<string>("");        // YYYY-MM-DD — set in init effect
   const [checkSelTaskId, setCheckSelTaskId] = useState<string>("");
   const [checkImages, setCheckImages] = useState<ImageBlock[]>([]);
   const [checkPreviews, setCheckPreviews] = useState<string[]>([]);
   const [checkAnalyzing, setCheckAnalyzing] = useState(false);
   const [checkResult, setCheckResult] = useState<AnalyzeWorkResult | null>(null);
   const [checkAnalyzeErr, setCheckAnalyzeErr] = useState<string>("");
+  const [submissions, setSubmissions] = useState<WorkSubmission[]>([]);
+  // Tracks which error rows are currently fetching a Claude improvement tip.
+  const [tipLoadingId, setTipLoadingId] = useState<string>("");
   const [doubtQ, setDoubtQ] = useState("");
   const [doubtImg, setDoubtImg] = useState<ImageBlock | null>(null);
   const [doubtPreview, setDoubtPreview] = useState<string>("");
@@ -348,6 +376,11 @@ export default function App() {
     saveData("shikhar-active-week", realW);
     setErrors(loadData("shikhar-errors", []));
     setReports(loadData("shikhar-reports", {}));
+    setSubmissions(loadData("shikhar-submissions", []));
+    // Default checkDate to today (local YYYY-MM-DD)
+    const now = new Date();
+    const iso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    setCheckDate(iso);
     setLoading(false);
   }, []);
 
@@ -368,6 +401,32 @@ export default function App() {
 
   const toggleErrorResolved = useCallback((id: string) => { setErrors(prev => { const u = prev.map(e => e.id === id ? { ...e, resolved: !e.resolved } : e); saveData("shikhar-errors", u); return u; }); }, []);
   const deleteError = useCallback((id: string) => { setErrors(prev => { const u = prev.filter(e => e.id !== id); saveData("shikhar-errors", u); return u; }); flash("Removed", 440); }, [flash]);
+
+  // Ask Claude for a personalised improvement tip on a specific error entry.
+  const fetchErrorTip = useCallback(async (id: string) => {
+    const target = errors.find(e => e.id === id);
+    if (!target) return;
+    setTipLoadingId(id);
+    const res = await suggestErrorFix({
+      subject: target.subject,
+      chapter: target.chapter,
+      topic: target.topic,
+      errorType: target.errorType,
+      whatWentWrong: target.whatWentWrong,
+      correctApproach: target.correctApproach,
+      studentName: "Shikhar",
+    });
+    setTipLoadingId("");
+    if (res.ok) {
+      setErrors(prev => {
+        const u = prev.map(e => e.id === id ? { ...e, claudeTip: res.text.trim() } : e);
+        saveData("shikhar-errors", u);
+        return u;
+      });
+    } else {
+      flash("Tip failed: " + res.error.slice(0, 30), 330);
+    }
+  }, [errors, flash]);
 
   const allTasks = schedule.flatMap(w => Object.values(w.days).flat());
   const totalT = allTasks.length;
@@ -495,21 +554,29 @@ export default function App() {
     runDailyReport(todayISO);
   }, [loading, reports, runDailyReport, fmtTodayISO]);
 
-  // Initialize CheckView's selected task once today's tasks are known.
+  // Re-pick the first task whenever checkDate changes (or on initial load).
   // MUST be declared before the `if (loading) return` early return below
   // so hook order stays stable across renders.
   useEffect(() => {
-    if (loading || checkSelTaskId) return;
-    const t = todayMidnight();
+    if (loading || !checkDate) return;
+    const target = new Date(checkDate + "T00:00:00").getTime();
+    let firstTaskId = "";
     for (const w of schedule) {
       for (const [day, ts] of Object.entries(w.days)) {
-        if (taskCalDate(w.week, day).getTime() === t.getTime() && ts[0]) {
-          setCheckSelTaskId(ts[0].id);
-          return;
+        if (taskCalDate(w.week, day).getTime() === target && ts[0]) {
+          firstTaskId = ts[0].id;
+          break;
         }
       }
+      if (firstTaskId) break;
     }
-  }, [loading, checkSelTaskId, schedule]);
+    setCheckSelTaskId(firstTaskId);
+    // Clear staged images / result when the user switches dates
+    setCheckImages([]);
+    setCheckPreviews([]);
+    setCheckResult(null);
+    setCheckAnalyzeErr("");
+  }, [loading, checkDate, schedule]);
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -1226,23 +1293,46 @@ export default function App() {
 
         {filtered.map((err, i) => (
           <Card key={err.id} className={`p-3.5 ${err.resolved ? "opacity-50" : ""}`}>
-            <div style={{ animationDelay: `${i * 40}ms` }} className="animate-fade-in-up flex items-start justify-between gap-3">
-              <div className="flex-1">
-                <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
-                  <Badge className={`bg-gradient-to-r ${SUBJ[err.subject].gradient} text-white uppercase`}>{SUBJ[err.subject].icon}</Badge>
-                  <Badge className="bg-gray-50 text-gray-500 ring-1 ring-gray-200">{err.errorType}</Badge>
-                  {err.resolved && <Badge className="bg-emerald-50 text-emerald-600">Resolved</Badge>}
+            <div style={{ animationDelay: `${i * 40}ms` }} className="animate-fade-in-up">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1">
+                  <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+                    <Badge className={`bg-gradient-to-r ${SUBJ[err.subject].gradient} text-white uppercase`}>{SUBJ[err.subject].icon}</Badge>
+                    <Badge className="bg-gray-50 text-gray-500 ring-1 ring-gray-200">{err.errorType}</Badge>
+                    {err.resolved && <Badge className="bg-emerald-50 text-emerald-600">Resolved</Badge>}
+                  </div>
+                  <p className="text-[17px] font-semibold text-gray-800">{err.chapter}{err.topic ? ` \u2014 ${err.topic}` : ""}</p>
+                  <p className="text-[17px] text-red-500 mt-1.5 leading-relaxed"><b className="text-red-600">Wrong:</b> {err.whatWentWrong}</p>
+                  {err.correctApproach && <p className="text-[17px] text-emerald-600 mt-1 leading-relaxed"><b>Correct:</b> {err.correctApproach}</p>}
                 </div>
-                <p className="text-[17px] font-semibold text-gray-800">{err.chapter}{err.topic ? ` \u2014 ${err.topic}` : ""}</p>
-                <p className="text-[17px] text-red-500 mt-1.5 leading-relaxed"><b className="text-red-600">Wrong:</b> {err.whatWentWrong}</p>
-                {err.correctApproach && <p className="text-[17px] text-emerald-600 mt-1 leading-relaxed"><b>Correct:</b> {err.correctApproach}</p>}
+                <div className="flex flex-col gap-1.5 flex-shrink-0">
+                  <button onClick={() => toggleErrorResolved(err.id)} className={`text-[17px] px-3 py-1.5 rounded-lg active:scale-95 font-semibold transition-all ${err.resolved ? "bg-amber-50 text-amber-600" : "bg-emerald-600 text-white shadow-sm"}`}>
+                    {err.resolved ? "Reopen" : "Resolve"}
+                  </button>
+                  <button onClick={() => deleteError(err.id)} className="text-[17px] text-gray-400 px-3 py-1.5 rounded-lg hover:bg-gray-50 active:scale-95 font-medium transition-all">Remove</button>
+                </div>
               </div>
-              <div className="flex flex-col gap-1.5 flex-shrink-0">
-                <button onClick={() => toggleErrorResolved(err.id)} className={`text-[17px] px-3 py-1.5 rounded-lg active:scale-95 font-semibold transition-all ${err.resolved ? "bg-amber-50 text-amber-600" : "bg-emerald-600 text-white shadow-sm"}`}>
-                  {err.resolved ? "Reopen" : "Resolve"}
-                </button>
-                <button onClick={() => deleteError(err.id)} className="text-[17px] text-gray-400 px-3 py-1.5 rounded-lg hover:bg-gray-50 active:scale-95 font-medium transition-all">Remove</button>
-              </div>
+
+              {/* Claude improvement tip */}
+              {err.claudeTip ? (
+                <div className="mt-3 pt-3 border-t border-gray-100">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <p className="text-[12px] font-bold text-brand-600 uppercase tracking-wider">{"\u2728"} Claude\u2019s Tip</p>
+                    <button onClick={() => fetchErrorTip(err.id)} disabled={tipLoadingId === err.id}
+                      className="text-[11px] text-gray-400 hover:text-brand-600 font-medium underline">
+                      {tipLoadingId === err.id ? "Refreshing\u2026" : "Refresh"}
+                    </button>
+                  </div>
+                  <p className="text-[14px] text-gray-700 leading-relaxed bg-brand-50/40 rounded-xl p-2.5 border border-brand-100/60">{err.claudeTip}</p>
+                </div>
+              ) : (
+                <div className="mt-3 pt-3 border-t border-gray-100">
+                  <button onClick={() => fetchErrorTip(err.id)} disabled={tipLoadingId === err.id}
+                    className="w-full text-[13px] bg-brand-50 text-brand-700 font-semibold py-2 rounded-xl active:scale-[0.98] transition-all hover:bg-brand-100 disabled:opacity-60">
+                    {tipLoadingId === err.id ? "Asking Claude\u2026" : "\u2728 Get Claude\u2019s improvement tip"}
+                  </button>
+                </div>
+              )}
             </div>
           </Card>
         ))}
@@ -1852,16 +1942,33 @@ export default function App() {
 
   // ====== CHECK WORK / DOUBT SOLVER / DAILY REPORT (Claude) ======
   // All state lives in App so this view survives parent re-renders mid-analyze.
-  const todayTasks = (() => {
-    const t = todayMidnight();
+
+  // Tasks scheduled for the currently-selected check date (defaults to today,
+  // but Shweta can pick any date — past or future — to review or upload work for).
+  const tasksForCheckDate = (() => {
+    if (!checkDate) return [] as DayTask[];
+    const target = new Date(checkDate + "T00:00:00").getTime();
     const out: DayTask[] = [];
     schedule.forEach(w => {
       Object.entries(w.days).forEach(([day, ts]) => {
-        if (taskCalDate(w.week, day).getTime() === t.getTime()) out.push(...ts);
+        if (taskCalDate(w.week, day).getTime() === target) out.push(...ts);
       });
     });
     return out;
   })();
+
+  // Submissions for the currently selected (taskId, date) pair, ordered oldest first.
+  const submissionsForCurrent = submissions
+    .filter(s => s.taskId === checkSelTaskId && s.date === checkDate)
+    .sort((a, b) => a.attemptNum - b.attemptNum);
+
+  const lastSubmission = submissionsForCurrent[submissionsForCurrent.length - 1];
+
+  // Cooldown: refuse to re-analyze the SAME task within this many minutes.
+  const RESUBMIT_COOLDOWN_MIN = 15;
+  const cooldownRemainingMin = lastSubmission
+    ? Math.max(0, RESUBMIT_COOLDOWN_MIN - Math.floor((Date.now() - new Date(lastSubmission.submittedAt).getTime()) / 60000))
+    : 0;
   const onPickFiles = async (files: FileList | null) => {
     if (!files) return;
     const blocks: ImageBlock[] = [];
@@ -1883,24 +1990,73 @@ export default function App() {
   };
 
   const runAnalyze = async () => {
-    const task = todayTasks.find(t => t.id === checkSelTaskId) || todayTasks[0];
+    const task = tasksForCheckDate.find(t => t.id === checkSelTaskId) || tasksForCheckDate[0];
     if (!task) { setCheckAnalyzeErr("No task selected"); return; }
     if (checkImages.length === 0) { setCheckAnalyzeErr("Please attach at least one photo"); return; }
+    if (cooldownRemainingMin > 0) {
+      setCheckAnalyzeErr(`Please wait ${cooldownRemainingMin} more min before re-submitting this task.`);
+      return;
+    }
     setCheckAnalyzing(true);
     setCheckResult(null);
     setCheckAnalyzeErr("");
+
+    // Build prior-attempt context for THIS task on THIS date so Claude can compare.
+    const prior = submissions
+      .filter(s => s.taskId === task.id && s.date === checkDate)
+      .sort((a, b) => a.attemptNum - b.attemptNum)
+      .map<PriorAttemptCtx>(s => ({
+        attemptNum: s.attemptNum,
+        submittedAt: s.submittedAt,
+        verdict: s.verdict,
+        marks_awarded: s.marksAwarded,
+        marks_max: s.marksMax,
+        summary: s.summary,
+        mistakes: s.mistakes,
+      }));
+
     const res = await analyzeWork({
       taskTopic: task.topic,
       taskSubject: task.subject,
       taskChapter: task.chapterName,
+      taskDate: checkDate,
       images: checkImages,
       studentName: "Shikhar",
+      priorAttempts: prior.length > 0 ? prior : undefined,
     });
     setCheckAnalyzing(false);
-    if (res.ok) {
-      setCheckResult(res.data);
-      // Auto-create error journal entries (silent - don't flash for each one)
-      const newErrors: ErrorEntry[] = res.data.mistakes.map(m => ({
+    if (!res.ok) { setCheckAnalyzeErr(res.error); return; }
+
+    setCheckResult(res.data);
+
+    // Persist as a new submission record
+    const attemptNum = prior.length + 1;
+    const sub: WorkSubmission = {
+      id: `sub-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      taskId: task.id,
+      date: checkDate,
+      submittedAt: new Date().toISOString(),
+      attemptNum,
+      verdict: res.data.verdict,
+      marksAwarded: res.data.marks_awarded,
+      marksMax: res.data.marks_max,
+      summary: res.data.summary,
+      mistakes: res.data.mistakes,
+      nextSteps: res.data.next_steps,
+      improvement: res.data.improvement,
+    };
+    setSubmissions(prev => {
+      const u = [...prev, sub];
+      saveData("shikhar-submissions", u);
+      return u;
+    });
+
+    // Auto-create error journal entries — but ONLY for genuinely-new mistakes
+    // (skip ones repeated from a previous attempt to avoid duplicates).
+    const repeatedSet = new Set((res.data.improvement?.repeated_mistakes || []).map(s => s.toLowerCase()));
+    const newErrors: ErrorEntry[] = res.data.mistakes
+      .filter(m => !repeatedSet.has(m.what_went_wrong.toLowerCase()))
+      .map(m => ({
         id: `err-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
         date: new Date().toISOString(),
         subject: task.subject,
@@ -1912,18 +2068,24 @@ export default function App() {
         correctApproach: m.correct_approach,
         resolved: false,
       }));
-      if (newErrors.length > 0) {
-        setErrors(prev => {
-          const u = [...newErrors, ...prev];
-          saveData("shikhar-errors", u);
-          return u;
-        });
-      }
-      // Auto-mark task done if correct/partial
+    if (newErrors.length > 0) {
+      setErrors(prev => {
+        const u = [...newErrors, ...prev];
+        saveData("shikhar-errors", u);
+        return u;
+      });
+    }
+
+    // Auto-mark task done only on the FIRST attempt for that day, so re-runs
+    // don't downgrade an earlier strong rating.
+    if (attemptNum === 1) {
       if (res.data.verdict === "correct") markTask(task.id, "done", 5);
       else if (res.data.verdict === "partial") markTask(task.id, "done", 3);
     } else {
-      setCheckAnalyzeErr(res.error);
+      // On subsequent attempts, upgrade rating if Claude says they improved.
+      if (res.data.improvement?.direction === "improved" && res.data.verdict === "correct") {
+        markTask(task.id, "done", 5);
+      }
     }
   };
 
@@ -1978,21 +2140,84 @@ export default function App() {
         {/* ===== CHECK WORK TAB ===== */}
         {tab === "work" && (
           <>
+            {/* Date picker — Shweta can grade work for ANY day, past or future */}
             <Card className="p-4">
-              <p className="text-[12px] font-bold text-gray-400 uppercase tracking-widest mb-2">Today&rsquo;s Task</p>
-              {todayTasks.length === 0 ? (
-                <p className="text-[14px] text-gray-500">No tasks scheduled for today.</p>
+              <p className="text-[12px] font-bold text-gray-400 uppercase tracking-widest mb-2">Assignment Date</p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    const d = new Date(checkDate + "T00:00:00");
+                    d.setDate(d.getDate() - 1);
+                    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+                    setCheckDate(iso);
+                  }}
+                  className="w-9 h-9 rounded-xl bg-gray-50 text-gray-500 flex items-center justify-center active:scale-90 hover:bg-gray-100">‹</button>
+                <input
+                  type="date"
+                  value={checkDate}
+                  onChange={e => setCheckDate(e.target.value)}
+                  className="flex-1 text-[14px] text-gray-700 border border-gray-200 rounded-xl px-3 py-2.5 bg-white text-center font-semibold"
+                />
+                <button
+                  onClick={() => {
+                    const d = new Date(checkDate + "T00:00:00");
+                    d.setDate(d.getDate() + 1);
+                    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+                    setCheckDate(iso);
+                  }}
+                  className="w-9 h-9 rounded-xl bg-gray-50 text-gray-500 flex items-center justify-center active:scale-90 hover:bg-gray-100">›</button>
+              </div>
+              {checkDate !== todayISO && (
+                <button onClick={() => setCheckDate(todayISO)} className="mt-2 text-[12px] text-brand-600 font-semibold underline">
+                  Jump to today
+                </button>
+              )}
+            </Card>
+
+            <Card className="p-4">
+              <p className="text-[12px] font-bold text-gray-400 uppercase tracking-widest mb-2">Task for {new Date(checkDate + "T00:00:00").toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" })}</p>
+              {tasksForCheckDate.length === 0 ? (
+                <p className="text-[14px] text-gray-500">No tasks scheduled for this date.</p>
               ) : (
                 <select value={selTaskId} onChange={e => setSelTaskId(e.target.value)} className="w-full text-[14px] text-gray-700 border border-gray-200 rounded-xl px-3 py-2.5 bg-white">
-                  {todayTasks.map(t => (
+                  {tasksForCheckDate.map(t => (
                     <option key={t.id} value={t.id}>{SUBJ[t.subject].icon} &mdash; {t.topic}</option>
                   ))}
                 </select>
               )}
             </Card>
 
+            {/* Prior attempts history for the selected (task, date) */}
+            {submissionsForCurrent.length > 0 && (
+              <Card className="p-4">
+                <p className="text-[12px] font-bold text-gray-400 uppercase tracking-widest mb-2">Attempt History ({submissionsForCurrent.length})</p>
+                <div className="space-y-2">
+                  {submissionsForCurrent.map(s => {
+                    const dirIcon = s.improvement?.direction === "improved" ? "📈" : s.improvement?.direction === "declined" ? "📉" : s.improvement ? "➡️" : "";
+                    return (
+                      <div key={s.id} className="flex items-center gap-3 bg-gray-50 rounded-xl p-2.5 border border-gray-100">
+                        <div className="w-8 h-8 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-[13px] font-bold text-gray-600 flex-shrink-0">#{s.attemptNum}</div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <Badge className={s.verdict === "correct" ? "bg-emerald-100 text-emerald-700" : s.verdict === "partial" ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"}>
+                              {s.verdict}
+                            </Badge>
+                            <span className="text-[13px] font-bold text-gray-700">{s.marksAwarded}/{s.marksMax}</span>
+                            {dirIcon && <span className="text-[14px]">{dirIcon}</span>}
+                          </div>
+                          <p className="text-[11px] text-gray-400 mt-0.5">{new Date(s.submittedAt).toLocaleString("en-IN", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Card>
+            )}
+
             <Card className="p-4">
-              <p className="text-[12px] font-bold text-gray-400 uppercase tracking-widest mb-2">Upload Shikhar&rsquo;s Solved Work</p>
+              <p className="text-[12px] font-bold text-gray-400 uppercase tracking-widest mb-2">
+                {submissionsForCurrent.length > 0 ? `Upload Re-Attempt #${submissionsForCurrent.length + 1}` : "Upload Shikhar\u2019s Solved Work"}
+              </p>
               <label className="block w-full border-2 border-dashed border-gray-200 rounded-xl py-6 text-center cursor-pointer hover:border-brand-300 hover:bg-brand-50/30 transition-all">
                 <input type="file" accept="image/*" multiple capture="environment" onChange={e => onPickFiles(e.target.files)} className="hidden" />
                 <p className="text-[14px] text-gray-500 font-semibold">📷 Tap to take or choose photo(s)</p>
@@ -2005,9 +2230,13 @@ export default function App() {
                   ))}
                 </div>
               )}
-              <button onClick={runAnalyze} disabled={analyzing || images.length === 0 || todayTasks.length === 0}
+              <button onClick={runAnalyze} disabled={analyzing || images.length === 0 || tasksForCheckDate.length === 0 || cooldownRemainingMin > 0}
                 className="mt-3 w-full bg-brand-600 disabled:bg-gray-300 text-white text-[14px] py-3 rounded-xl font-semibold active:scale-[0.98] transition-all">
-                {analyzing ? "Analyzing with Claude…" : "Analyze with Claude"}
+                {analyzing
+                  ? "Analyzing with Claude…"
+                  : cooldownRemainingMin > 0
+                    ? `Wait ${cooldownRemainingMin} min before re-submit`
+                    : submissionsForCurrent.length > 0 ? "Analyze Re-Attempt" : "Analyze with Claude"}
               </button>
               {analyzeErr && <p className="text-[12px] text-red-500 mt-2 font-semibold">⚠️ {analyzeErr}</p>}
             </Card>
@@ -2021,6 +2250,27 @@ export default function App() {
                   <p className="text-[16px] font-black text-gray-800">{result.marks_awarded} / {result.marks_max}</p>
                 </div>
                 <p className="text-[14px] text-gray-700 leading-relaxed mb-3">{result.summary}</p>
+
+                {/* Improvement panel (only present on re-attempts) */}
+                {result.improvement && (
+                  <div className={`rounded-xl p-3 mb-3 border ${result.improvement.direction === "improved" ? "bg-emerald-50 border-emerald-200" : result.improvement.direction === "declined" ? "bg-red-50 border-red-200" : "bg-gray-50 border-gray-200"}`}>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <span className="text-[16px]">{result.improvement.direction === "improved" ? "📈" : result.improvement.direction === "declined" ? "📉" : "➡️"}</span>
+                      <p className="text-[13px] font-bold uppercase tracking-wider text-gray-700">{result.improvement.direction}</p>
+                    </div>
+                    <p className="text-[13px] text-gray-700 mb-2">{result.improvement.note}</p>
+                    {result.improvement.fixed_mistakes.length > 0 && (
+                      <p className="text-[12px] text-emerald-700 mb-0.5">✓ Fixed: {result.improvement.fixed_mistakes.join("; ")}</p>
+                    )}
+                    {result.improvement.repeated_mistakes.length > 0 && (
+                      <p className="text-[12px] text-amber-700 mb-0.5">↻ Still repeating: {result.improvement.repeated_mistakes.join("; ")}</p>
+                    )}
+                    {result.improvement.new_mistakes.length > 0 && (
+                      <p className="text-[12px] text-red-700">+ New: {result.improvement.new_mistakes.join("; ")}</p>
+                    )}
+                  </div>
+                )}
+
                 {result.mistakes.length > 0 && (
                   <div className="space-y-2">
                     <p className="text-[12px] font-bold text-gray-500 uppercase tracking-widest">Mistakes ({result.mistakes.length})</p>
@@ -2031,7 +2281,7 @@ export default function App() {
                         <p className="text-[13px] text-gray-700 mt-1"><b>Correct:</b> {m.correct_approach}</p>
                       </div>
                     ))}
-                    <p className="text-[11px] text-gray-400 italic">✓ Auto-added to Error Journal</p>
+                    <p className="text-[11px] text-gray-400 italic">✓ Auto-added to Error Journal (duplicates skipped)</p>
                   </div>
                 )}
                 <div className="mt-3 pt-3 border-t border-gray-200">
