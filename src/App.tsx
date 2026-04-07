@@ -495,6 +495,22 @@ export default function App() {
     runDailyReport(todayISO);
   }, [loading, reports, runDailyReport, fmtTodayISO]);
 
+  // Initialize CheckView's selected task once today's tasks are known.
+  // MUST be declared before the `if (loading) return` early return below
+  // so hook order stays stable across renders.
+  useEffect(() => {
+    if (loading || checkSelTaskId) return;
+    const t = todayMidnight();
+    for (const w of schedule) {
+      for (const [day, ts] of Object.entries(w.days)) {
+        if (taskCalDate(w.week, day).getTime() === t.getTime() && ts[0]) {
+          setCheckSelTaskId(ts[0].id);
+          return;
+        }
+      }
+    }
+  }, [loading, checkSelTaskId, schedule]);
+
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="flex flex-col items-center gap-3">
@@ -1814,11 +1830,6 @@ export default function App() {
     });
     return out;
   })();
-  // Initialize the selected task once we know what's available
-  useEffect(() => {
-    if (!checkSelTaskId && todayTasks[0]) setCheckSelTaskId(todayTasks[0].id);
-  }, [todayTasks, checkSelTaskId]);
-
   const onPickFiles = async (files: FileList | null) => {
     if (!files) return;
     const blocks: ImageBlock[] = [];
