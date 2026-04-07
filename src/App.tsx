@@ -559,15 +559,15 @@ function TaskCardImpl({
           <p className="text-[17px] text-gray-400 mt-1">{task.hours}h &middot; {task.chapterName}</p>
 
           {entry?.topicConfidence && (
-            <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              <span className={`text-[12px] font-bold px-2 py-0.5 rounded-full ring-1 ${confColor(entry.topicConfidence)}`}>
+            <div className="mt-2.5 flex flex-wrap items-center gap-2">
+              <span className={`text-[14px] font-bold px-2.5 py-1 rounded-full ring-1 ${confColor(entry.topicConfidence)}`}>
                 {confLabel(entry.topicConfidence)}
               </span>
               {entry.completedSteps && entry.completedSteps.length > 0 && (
-                <span className="text-[11px] text-gray-500">{entry.completedSteps.length}/{steps.length} steps done</span>
+                <span className="text-[14px] text-gray-600 font-semibold">{entry.completedSteps.length}/{steps.length} steps done</span>
               )}
               {entry.problemSteps && entry.problemSteps.length > 0 && (
-                <span className="text-[11px] text-amber-600 font-semibold">{entry.problemSteps.length} problem{entry.problemSteps.length === 1 ? "" : "s"}</span>
+                <span className="text-[14px] text-amber-600 font-bold">{entry.problemSteps.length} problem{entry.problemSteps.length === 1 ? "" : "s"}</span>
               )}
             </div>
           )}
@@ -575,7 +575,7 @@ function TaskCardImpl({
               tap-to-ask: tapping a 👎/🤔 chip jumps to Claude → Doubt with
               that specific sub-topic pre-filled. */}
           {entry?.subtopicConfidence && Object.keys(entry.subtopicConfidence).length > 0 && (
-            <div className="mt-1.5 flex flex-wrap gap-1">
+            <div className="mt-2 flex flex-wrap gap-1.5">
               {Object.entries(entry.subtopicConfidence)
                 .sort(([, a], [, b]) => {
                   const ord = { bad: 0, average: 1, good: 2 } as const;
@@ -590,7 +590,7 @@ function TaskCardImpl({
                       onClick={weak && askDoubt ? () => askDoubt(task, [sub]) : undefined}
                       disabled={!weak || !askDoubt}
                       title={weak ? "Ask Claude about this sub-topic" : undefined}
-                      className={`text-[11px] font-semibold px-1.5 py-0.5 rounded ring-1 ${confColor(c)} ${weak && askDoubt ? "active:scale-95 hover:brightness-95 cursor-pointer" : "cursor-default"}`}
+                      className={`text-[14px] font-bold px-2.5 py-1.5 rounded-lg ring-1 ${confColor(c)} ${weak && askDoubt ? "active:scale-95 hover:brightness-95 cursor-pointer shadow-sm" : "cursor-default"}`}
                     >
                       {c === "good" ? "👍" : c === "average" ? "🤔" : "👎"} {sub}
                     </button>
