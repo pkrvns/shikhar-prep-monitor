@@ -2418,7 +2418,13 @@ export default function App() {
     if (res.ok) setDoubtAns(res.text); else setDoubtErr(res.error);
   };
 
-  const CheckView = () => {
+  // NOT a React component — a plain JSX-returning function. If we make it a
+  // component, every keystroke in App-level state (e.g. doubtQ) re-renders
+  // App, which gives <CheckView/> a new function identity → React unmounts
+  // and remounts the whole subtree → the textarea loses focus → iOS keyboard
+  // collapses after every character. Calling it as {renderCheckView()} lets
+  // React reconcile the JSX in-place, so the textarea stays focused.
+  const renderCheckView = () => {
     const tab = checkTab;
     const setTab = setCheckTab;
     const selTaskId = checkSelTaskId;
@@ -2820,7 +2826,7 @@ export default function App() {
           {view === "resources" && <ResourcesView />}
           {view === "formulas" && <FormulasView />}
           {view === "evaluate" && <EvaluateView />}
-          {view === "check" && <CheckView />}
+          {view === "check" && renderCheckView()}
           {view === "adjust" && <AdjustView />}
         </div>
       </div>
