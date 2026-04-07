@@ -31,7 +31,12 @@ interface ProgressEntry {
   status: TaskStatus;
   date: string;
   notes: string;
-  rating: number;
+  rating: number;                 // legacy 1-5; kept so Revisit/Analytics work
+  // ---- Structured task review (new) ----
+  completedSteps?: number[];      // indexes of study instructions Shikhar completed
+  problemSteps?: number[];        // indexes of study instructions that caused trouble
+  topicConfidence?: "good" | "average" | "bad"; // replaces the old emoji star rating
+  completionNote?: string;        // optional 1-line free-text reflection
 }
 
 interface ErrorEntry {
@@ -184,6 +189,53 @@ function todayMidnight(): Date {
   t.setHours(0, 0, 0, 0);
   return t;
 }
+// Per-task-type checklist of study instructions. Module-level so both
+// DailyView and the TaskCard review panel can use it.
+function getTipInstructions(t: { type: DayTask["type"] }): string[] {
+  if (t.type === "study") return [
+    "Read the NCERT theory chapter completely before attempting any problem — do not skip any paragraph.",
+    "Highlight every formula, definition, and key concept with a marker as you read.",
+    "Solve all NCERT in-text (within-chapter) questions immediately after reading each section.",
+    "Write a 5-line summary of the chapter in your own words at the end of the session.",
+    "If something is unclear, note it down and bring it to Shweta ma'am before the next session.",
+  ];
+  if (t.type === "practice") return [
+    "Close your notebook and attempt every problem from scratch — no peeking at solved examples.",
+    "Set a timer for each problem: 3 min for 1-mark, 5 min for 2-mark, 10 min for 5-mark questions.",
+    "Circle every problem you couldn't solve or took more than the allotted time — these are priority doubts.",
+    "After finishing, verify answers one-by-one and write down exactly where you went wrong.",
+    "Log any formula errors or concept mistakes in the Error Journal immediately.",
+  ];
+  if (t.type === "test") return [
+    "Keep your phone in another room and sit at a clean desk — treat this as the actual board exam.",
+    "Read the full question paper for 5 minutes before writing — plan which questions to attempt first.",
+    "Attempt high-confidence questions first; come back to difficult ones after securing easy marks.",
+    "Leave 10 minutes at the end strictly for revision and checking units/signs.",
+    "After the test, score yourself honestly using the marking scheme and log mistakes in Error Journal.",
+  ];
+  if (t.type === "revision") return [
+    "Pull out your previous notes and error journal for this chapter before starting.",
+    "Focus 70% of time on topics you rated 1–2 in confidence; only skim topics rated 4–5.",
+    "Re-derive all key formulas from scratch on a blank page — do not copy from notes.",
+    "Solve at least 5 PYQ questions from this chapter to check your revision depth.",
+    "Update your confidence rating for each topic after revision.",
+  ];
+  return [
+    "Use this buffer time to complete any pending tasks from earlier in the week.",
+    "If all tasks are done, do a quick 20-minute formula drill across all three subjects.",
+    "Review your Error Journal — pick 3 unresolved errors and work through them.",
+    "Rest properly if you have studied for 5+ hours today — sleep consolidates memory.",
+  ];
+}
+
+// Map the new 3-way confidence onto the legacy 1-5 rating that Revisit and
+// Analytics already understand. "bad" stays in the spaced-repetition zone.
+const CONFIDENCE_TO_RATING: Record<"good" | "average" | "bad", number> = {
+  good: 5,
+  average: 3,
+  bad: 1,
+};
+
 function realWeekFromToday(): number {
   const t = todayMidnight();
   if (t < SCHEDULE_START) return 1;
@@ -216,6 +268,220 @@ function Card({ children, className = "", onClick }: { children: React.ReactNode
 
 function Badge({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return <span className={`inline-flex items-center text-[16px] font-semibold px-2 py-0.5 rounded-md tracking-wide ${className}`}>{children}</span>;
+}
+
+// ====== TaskCardImpl ======
+// Defined at module level so its component identity is stable across App
+// re-renders. The structured-review draft state lives here, so a parent
+// re-render (e.g. flash() toast) cannot wipe a half-filled review form.
+type MarkTaskFn = (
+  tid: string,
+  st: TaskStatus,
+  rat?: number,
+  extras?: Partial<Pick<ProgressEntry, "completedSteps" | "problemSteps" | "topicConfidence" | "completionNote">>,
+) => void;
+
+function confLabel(c: "good" | "average" | "bad") {
+  return c === "good" ? "Good" : c === "average" ? "Average" : "Bad";
+}
+function confColor(c: "good" | "average" | "bad") {
+  return c === "good"
+    ? "bg-emerald-100 text-emerald-700 ring-emerald-200"
+    : c === "average"
+    ? "bg-amber-100 text-amber-700 ring-amber-200"
+    : "bg-red-100 text-red-700 ring-red-200";
+}
+
+function TaskCardImpl({
+  task,
+  idx,
+  entry,
+  markTask,
+}: {
+  task: DayTask;
+  idx: number;
+  entry: ProgressEntry | undefined;
+  markTask: MarkTaskFn;
+}) {
+  const isDone = entry?.status === "done";
+  const isSkip = entry?.status === "skipped";
+  const sc = SUBJ[task.subject];
+  const steps = getTipInstructions(task);
+
+  const [showReview, setShowReview] = useState(false);
+  const [draftCompleted, setDraftCompleted] = useState<Set<number>>(() => new Set(entry?.completedSteps || []));
+  const [draftProblems, setDraftProblems] = useState<Set<number>>(() => new Set(entry?.problemSteps || []));
+  const [draftConfidence, setDraftConfidence] = useState<"good" | "average" | "bad" | "">(entry?.topicConfidence || "");
+  const [draftNote, setDraftNote] = useState<string>(entry?.completionNote || "");
+
+  // When the user clicks Edit on a previously-saved task, refill the draft
+  // from the persisted entry. We only re-seed when the panel opens, never
+  // while it's already open (so typing is never overwritten by re-renders).
+  const openReview = () => {
+    setDraftCompleted(new Set(entry?.completedSteps || []));
+    setDraftProblems(new Set(entry?.problemSteps || []));
+    setDraftConfidence(entry?.topicConfidence || "");
+    setDraftNote(entry?.completionNote || "");
+    setShowReview(true);
+  };
+
+  const toggleSet = (
+    set: Set<number>,
+    setter: (s: Set<number>) => void,
+    i: number,
+  ) => {
+    const next = new Set(set);
+    if (next.has(i)) next.delete(i);
+    else next.add(i);
+    setter(next);
+  };
+
+  const submitReview = () => {
+    if (!draftConfidence) return;
+    markTask(task.id, "done", CONFIDENCE_TO_RATING[draftConfidence], {
+      completedSteps: Array.from(draftCompleted).sort((a, b) => a - b),
+      problemSteps: Array.from(draftProblems).sort((a, b) => a - b),
+      topicConfidence: draftConfidence,
+      completionNote: draftNote.trim() || undefined,
+    });
+    setShowReview(false);
+  };
+
+  return (
+    <div
+      style={{ animationDelay: `${idx * 50}ms` }}
+      className={`animate-fade-in-up rounded-2xl border p-3.5 transition-all duration-200 ${
+        isDone
+          ? "bg-gray-50/80 border-gray-100"
+          : isSkip
+          ? "bg-gray-50/50 border-gray-100 opacity-50"
+          : `${sc.light} ${sc.border}`
+      }`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+            <Badge className={`bg-gradient-to-r ${sc.gradient} text-white uppercase`}>{sc.icon}</Badge>
+            <Badge className={TYPE_BADGE[task.type] || TYPE_BADGE.buffer}>{task.type}</Badge>
+            {task.chapter > 0 && <span className="text-[16px] text-gray-400 font-medium">Ch.{task.chapter}</span>}
+          </div>
+          <p className={`text-[17px] font-semibold leading-snug ${isDone ? "line-through text-gray-400" : "text-gray-800"}`}>{task.topic}</p>
+          <p className="text-[17px] text-gray-400 mt-1">{task.hours}h &middot; {task.chapterName}</p>
+
+          {entry?.topicConfidence && (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <span className={`text-[12px] font-bold px-2 py-0.5 rounded-full ring-1 ${confColor(entry.topicConfidence)}`}>
+                {confLabel(entry.topicConfidence)}
+              </span>
+              {entry.completedSteps && entry.completedSteps.length > 0 && (
+                <span className="text-[11px] text-gray-500">{entry.completedSteps.length}/{steps.length} steps done</span>
+              )}
+              {entry.problemSteps && entry.problemSteps.length > 0 && (
+                <span className="text-[11px] text-amber-600 font-semibold">{entry.problemSteps.length} problem{entry.problemSteps.length === 1 ? "" : "s"}</span>
+              )}
+            </div>
+          )}
+          {entry?.completionNote && (
+            <p className="text-[12px] text-gray-500 italic mt-1.5">&ldquo;{entry.completionNote}&rdquo;</p>
+          )}
+        </div>
+        <div className="flex flex-col gap-1.5 flex-shrink-0">
+          {!isDone && !isSkip && (
+            <>
+              <button onClick={() => (showReview ? setShowReview(false) : openReview())} className="text-[17px] bg-brand-600 text-white px-3 py-1.5 rounded-lg hover:bg-brand-700 active:scale-95 font-semibold transition-all shadow-sm shadow-brand-600/20">Done</button>
+              <button onClick={() => markTask(task.id, "skipped")} className="text-[17px] text-gray-400 px-3 py-1.5 rounded-lg hover:bg-gray-100 active:scale-95 font-medium transition-all">Skip</button>
+            </>
+          )}
+          {isDone && (
+            <>
+              <button onClick={() => (showReview ? setShowReview(false) : openReview())} className="text-[14px] text-brand-600 px-3 py-1.5 rounded-lg hover:bg-brand-50 active:scale-95 font-semibold transition-all">Edit</button>
+              <button onClick={() => markTask(task.id, "pending")} className="text-[14px] text-gray-400 px-3 py-1.5 rounded-lg hover:bg-gray-100 active:scale-95 font-medium transition-all">Undo</button>
+            </>
+          )}
+          {isSkip && (
+            <button onClick={() => markTask(task.id, "pending")} className="text-[17px] text-gray-400 px-3 py-1.5 rounded-lg hover:bg-gray-100 active:scale-95 font-medium transition-all">Undo</button>
+          )}
+        </div>
+      </div>
+
+      {showReview && (
+        <div className="mt-3 pt-3 border-t border-gray-200/60 space-y-4">
+          <div>
+            <p className="text-[12px] font-bold text-gray-500 uppercase tracking-widest mb-2">Study Instructions for {task.type}</p>
+            <p className="text-[11px] text-gray-400 mb-2">Tick what was completed. Mark &#9888; on any step that gave trouble.</p>
+            <ol className="space-y-1.5">
+              {steps.map((step, i) => {
+                const done = draftCompleted.has(i);
+                const trouble = draftProblems.has(i);
+                return (
+                  <li key={i} className="flex items-start gap-2">
+                    <button
+                      type="button"
+                      onClick={() => toggleSet(draftCompleted, setDraftCompleted, i)}
+                      className={`w-6 h-6 rounded-md border-2 flex-shrink-0 mt-0.5 flex items-center justify-center text-[11px] font-bold transition-all active:scale-90 ${done ? "bg-emerald-500 border-emerald-500 text-white" : "border-gray-300 bg-white text-transparent"}`}
+                      aria-label="Mark step done"
+                    >&#10003;</button>
+                    <button
+                      type="button"
+                      onClick={() => toggleSet(draftProblems, setDraftProblems, i)}
+                      className={`w-6 h-6 rounded-md border-2 flex-shrink-0 mt-0.5 flex items-center justify-center text-[11px] font-bold transition-all active:scale-90 ${trouble ? "bg-amber-400 border-amber-400 text-white" : "border-gray-300 bg-white text-transparent"}`}
+                      aria-label="Mark step as a problem"
+                    >&#9888;</button>
+                    <p className={`text-[13px] leading-snug flex-1 ${done ? "text-gray-700" : "text-gray-600"}`}>{step}</p>
+                  </li>
+                );
+              })}
+            </ol>
+          </div>
+
+          <div>
+            <p className="text-[12px] font-bold text-gray-500 uppercase tracking-widest mb-2">How is this topic now?</p>
+            <div className="grid grid-cols-3 gap-2">
+              {(["good", "average", "bad"] as const).map(c => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setDraftConfidence(c)}
+                  className={`text-[14px] py-2 rounded-xl font-bold transition-all active:scale-95 ring-1 ${draftConfidence === c ? confColor(c) : "bg-gray-50 text-gray-500 ring-gray-200 hover:bg-gray-100"}`}
+                >
+                  {c === "good" ? "👍 Good" : c === "average" ? "🤔 Average" : "👎 Bad"}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <p className="text-[12px] font-bold text-gray-500 uppercase tracking-widest mb-2">Note (optional)</p>
+            <input
+              type="text"
+              value={draftNote}
+              onChange={e => setDraftNote(e.target.value)}
+              placeholder="One line — what to remember about this session"
+              className="w-full text-[13px] text-gray-700 border border-gray-200 rounded-xl px-3 py-2 bg-white"
+            />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={submitReview}
+              disabled={!draftConfidence}
+              className="flex-1 bg-brand-600 disabled:bg-gray-300 text-white text-[14px] py-2.5 rounded-xl font-semibold active:scale-[0.98] transition-all"
+            >
+              {isDone ? "Update Review" : "Save & Mark Done"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowReview(false)}
+              className="text-[13px] text-gray-400 px-3 py-2.5 rounded-xl hover:bg-gray-100 active:scale-95 font-medium"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function ProgressRing({ pct, size = 48, stroke = 4, color = "#4f46e5" }: { pct: number; size?: number; stroke?: number; color?: string }) {
@@ -387,8 +653,25 @@ export default function App() {
   const flash = useCallback((m: string, f = 880) => { setToast(m); playBeep(f); setTimeout(() => setToast(""), 2200); }, []);
   const chgActW = useCallback((w: number) => { setActW(w); saveData("shikhar-active-week", w); flash(`Week ${w} active`, 660); }, [flash]);
 
-  const markTask = useCallback((tid: string, st: TaskStatus, rat = 0) => {
-    setProgress(prev => { const u = { ...prev, [tid]: { taskId: tid, status: st, date: new Date().toISOString(), notes: "", rating: rat } }; saveData("shikhar-progress", u); return u; });
+  const markTask = useCallback((tid: string, st: TaskStatus, rat = 0, extras?: Partial<Pick<ProgressEntry, "completedSteps" | "problemSteps" | "topicConfidence" | "completionNote">>) => {
+    setProgress(prev => {
+      // Preserve any existing review fields when toggling status only.
+      const existing = prev[tid];
+      const merged: ProgressEntry = {
+        taskId: tid,
+        status: st,
+        date: new Date().toISOString(),
+        notes: existing?.notes || "",
+        rating: rat || existing?.rating || 0,
+        completedSteps: extras?.completedSteps ?? existing?.completedSteps,
+        problemSteps: extras?.problemSteps ?? existing?.problemSteps,
+        topicConfidence: extras?.topicConfidence ?? existing?.topicConfidence,
+        completionNote: extras?.completionNote ?? existing?.completionNote,
+      };
+      const u = { ...prev, [tid]: merged };
+      saveData("shikhar-progress", u);
+      return u;
+    });
     flash(st === "done" ? "Marked complete" : st === "skipped" ? "Skipped" : "Restored", st === "done" ? 880 : 440);
   }, [flash]);
 
@@ -588,54 +871,13 @@ export default function App() {
   );
 
   // ====== Task Card ======
-  const TaskCard = ({ task, idx = 0 }: { task: DayTask; idx?: number }) => {
-    const [showR, setShowR] = useState(false);
-    const p = progress[task.id];
-    const isDone = p?.status === "done";
-    const isSkip = p?.status === "skipped";
-    const sc = SUBJ[task.subject];
-    return (
-      <div style={{ animationDelay: `${idx * 50}ms` }} className={`animate-fade-in-up rounded-2xl border p-3.5 transition-all duration-200 ${isDone ? "bg-gray-50/80 border-gray-100" : isSkip ? "bg-gray-50/50 border-gray-100 opacity-50" : `${sc.light} ${sc.border}`}`}>
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
-              <Badge className={`bg-gradient-to-r ${sc.gradient} text-white uppercase`}>{sc.icon}</Badge>
-              <Badge className={TYPE_BADGE[task.type] || TYPE_BADGE.buffer}>{task.type}</Badge>
-              {task.chapter > 0 && <span className="text-[16px] text-gray-400 font-medium">Ch.{task.chapter}</span>}
-            </div>
-            <p className={`text-[17px] font-semibold leading-snug ${isDone ? "line-through text-gray-400" : "text-gray-800"}`}>{task.topic}</p>
-            <p className="text-[17px] text-gray-400 mt-1">{task.hours}h &middot; {task.chapterName}</p>
-            {p?.rating > 0 && (
-              <div className="mt-1.5 flex gap-0.5">{[1, 2, 3, 4, 5].map(s => <span key={s} className={`text-[17px] ${s <= p.rating ? "text-amber-400" : "text-gray-200"}`}>{"\u2605"}</span>)}</div>
-            )}
-          </div>
-          <div className="flex flex-col gap-1.5 flex-shrink-0">
-            {!isDone && !isSkip && (
-              <>
-                <button onClick={() => setShowR(!showR)} className="text-[17px] bg-brand-600 text-white px-3 py-1.5 rounded-lg hover:bg-brand-700 active:scale-95 font-semibold transition-all shadow-sm shadow-brand-600/20">Done</button>
-                <button onClick={() => markTask(task.id, "skipped")} className="text-[17px] text-gray-400 px-3 py-1.5 rounded-lg hover:bg-gray-100 active:scale-95 font-medium transition-all">Skip</button>
-              </>
-            )}
-            {(isDone || isSkip) && (
-              <button onClick={() => markTask(task.id, "pending")} className="text-[17px] text-gray-400 px-3 py-1.5 rounded-lg hover:bg-gray-100 active:scale-95 font-medium transition-all">Undo</button>
-            )}
-          </div>
-        </div>
-        {showR && (
-          <div className="mt-3 pt-3 border-t border-gray-200/60">
-            <p className="text-[17px] text-gray-500 mb-2 font-medium">How well did you understand?</p>
-            <div className="flex gap-2">
-              {[1, 2, 3, 4, 5].map(r => (
-                <button key={r} onClick={() => { markTask(task.id, "done", r); setShowR(false); }} className="w-9 h-9 rounded-xl bg-gray-50 hover:bg-gray-100 flex items-center justify-center text-lg active:scale-90 transition-all hover:shadow-sm">
-                  {r <= 2 ? "\uD83D\uDE1F" : r === 3 ? "\uD83D\uDE10" : r === 4 ? "\uD83D\uDE0A" : "\uD83C\uDF1F"}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
+  // TaskCard is a thin wrapper that injects App's progress + markTask into
+  // the module-scoped TaskCardImpl. Defining the impl outside App means React
+  // keeps it stable across App re-renders, so the review-form draft state
+  // (checklist, problems, confidence, note) is NEVER wiped mid-edit.
+  const TaskCard = ({ task, idx = 0 }: { task: DayTask; idx?: number }) => (
+    <TaskCardImpl task={task} idx={idx} entry={progress[task.id]} markTask={markTask} />
+  );
 
   // ====== Progress Bar ======
   const SubjectBar = ({ pct, color, label, detail }: { pct: number; color: string; label: string; detail: string }) => (
@@ -925,44 +1167,6 @@ export default function App() {
       timeSlots.push({ time: `${fmt(startH)} - ${fmt(endH)}`, task: t });
       hour = endH + 0.5; // 30 min break between
     });
-
-    // Tips based on task type
-    const getTipInstructions = (t: DayTask): string[] => {
-      if (t.type === "study") return [
-        "Read the NCERT theory chapter completely before attempting any problem — do not skip any paragraph.",
-        "Highlight every formula, definition, and key concept with a marker as you read.",
-        "Solve all NCERT in-text (within-chapter) questions immediately after reading each section.",
-        "Write a 5-line summary of the chapter in your own words at the end of the session.",
-        "If something is unclear, note it down and bring it to Shweta ma'am before the next session.",
-      ];
-      if (t.type === "practice") return [
-        "Close your notebook and attempt every problem from scratch — no peeking at solved examples.",
-        "Set a timer for each problem: 3 min for 1-mark, 5 min for 2-mark, 10 min for 5-mark questions.",
-        "Circle every problem you couldn't solve or took more than the allotted time — these are priority doubts.",
-        "After finishing, verify answers one-by-one and write down exactly where you went wrong.",
-        "Log any formula errors or concept mistakes in the Error Journal immediately.",
-      ];
-      if (t.type === "test") return [
-        "Keep your phone in another room and sit at a clean desk — treat this as the actual board exam.",
-        "Read the full question paper for 5 minutes before writing — plan which questions to attempt first.",
-        "Attempt high-confidence questions first; come back to difficult ones after securing easy marks.",
-        "Leave 10 minutes at the end strictly for revision and checking units/signs.",
-        "After the test, score yourself honestly using the marking scheme and log mistakes in Error Journal.",
-      ];
-      if (t.type === "revision") return [
-        "Pull out your previous notes and error journal for this chapter before starting.",
-        "Focus 70% of time on topics you rated 1–2 in confidence; only skim topics rated 4–5.",
-        "Re-derive all key formulas from scratch on a blank page — do not copy from notes.",
-        "Solve at least 5 PYQ questions from this chapter to check your revision depth.",
-        "Update your confidence rating for each topic after revision.",
-      ];
-      return [
-        "Use this buffer time to complete any pending tasks from earlier in the week.",
-        "If all tasks are done, do a quick 20-minute formula drill across all three subjects.",
-        "Review your Error Journal — pick 3 unresolved errors and work through them.",
-        "Rest properly if you have studied for 5+ hours today — sleep consolidates memory.",
-      ];
-    };
 
     // Motivational based on day
     const dayMsg: Record<string, string> = {
