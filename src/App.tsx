@@ -300,11 +300,15 @@ function TaskCardImpl({
   idx,
   entry,
   markTask,
+  askDoubt,
+  checkWork,
 }: {
   task: DayTask;
   idx: number;
   entry: ProgressEntry | undefined;
   markTask: MarkTaskFn;
+  askDoubt?: (task: DayTask, subtopics: string[]) => void;
+  checkWork?: (task: DayTask, entry: ProgressEntry | undefined) => void;
 }) {
   const isDone = entry?.status === "done";
   const isSkip = entry?.status === "skipped";
@@ -427,7 +431,9 @@ function TaskCardImpl({
               )}
             </div>
           )}
-          {/* Per-sub-topic confidence summary (worst first) */}
+          {/* Per-sub-topic confidence summary (worst first). Each weak chip is
+              tap-to-ask: tapping a 👎/🤔 chip jumps to Claude → Doubt with
+              that specific sub-topic pre-filled. */}
           {entry?.subtopicConfidence && Object.keys(entry.subtopicConfidence).length > 0 && (
             <div className="mt-1.5 flex flex-wrap gap-1">
               {Object.entries(entry.subtopicConfidence)
@@ -435,13 +441,54 @@ function TaskCardImpl({
                   const ord = { bad: 0, average: 1, good: 2 } as const;
                   return ord[a] - ord[b];
                 })
-                .map(([sub, c]) => (
-                  <span key={sub} className={`text-[11px] font-semibold px-1.5 py-0.5 rounded ring-1 ${confColor(c)}`}>
-                    {c === "good" ? "👍" : c === "average" ? "🤔" : "👎"} {sub}
-                  </span>
-                ))}
+                .map(([sub, c]) => {
+                  const weak = c === "bad" || c === "average";
+                  return (
+                    <button
+                      key={sub}
+                      type="button"
+                      onClick={weak && askDoubt ? () => askDoubt(task, [sub]) : undefined}
+                      disabled={!weak || !askDoubt}
+                      title={weak ? "Ask Claude about this sub-topic" : undefined}
+                      className={`text-[11px] font-semibold px-1.5 py-0.5 rounded ring-1 ${confColor(c)} ${weak && askDoubt ? "active:scale-95 hover:brightness-95 cursor-pointer" : "cursor-default"}`}
+                    >
+                      {c === "good" ? "👍" : c === "average" ? "🤔" : "👎"} {sub}
+                    </button>
+                  );
+                })}
             </div>
           )}
+          {/* Inline Claude actions for completed tasks — pull doubt-solving and
+              work-checking into the review context so Shweta never has to
+              re-enter chapter / topic / date in the Claude tab. */}
+          {entry?.status === "done" && (askDoubt || checkWork) && (() => {
+            const weakSubs = entry.subtopicConfidence
+              ? Object.entries(entry.subtopicConfidence).filter(([, c]) => c !== "good").map(([s]) => s)
+              : [];
+            const hasWeak = weakSubs.length > 0 || entry.topicConfidence === "bad" || entry.topicConfidence === "average";
+            return (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {askDoubt && (
+                  <button
+                    type="button"
+                    onClick={() => askDoubt(task, weakSubs)}
+                    className={`text-[11px] font-bold px-2.5 py-1 rounded-lg active:scale-95 transition-all ring-1 ${hasWeak ? "bg-brand-50 text-brand-700 ring-brand-200 hover:bg-brand-100" : "bg-gray-50 text-gray-500 ring-gray-200 hover:bg-gray-100"}`}
+                  >
+                    💡 Ask Claude{hasWeak && weakSubs.length > 0 ? ` (${weakSubs.length})` : ""}
+                  </button>
+                )}
+                {checkWork && (
+                  <button
+                    type="button"
+                    onClick={() => checkWork(task, entry)}
+                    className="text-[11px] font-bold px-2.5 py-1 rounded-lg active:scale-95 transition-all ring-1 bg-gray-50 text-gray-600 ring-gray-200 hover:bg-gray-100"
+                  >
+                    📷 Check Shikhar&rsquo;s work
+                  </button>
+                )}
+              </div>
+            );
+          })()}
           {/* Legacy free-text topics (only chapters with no canonical list) */}
           {entry?.topicsCovered && entry.topicsCovered.length > 0 && (
             <div className="mt-1.5 flex flex-wrap gap-1">
@@ -1118,8 +1165,48 @@ export default function App() {
   // the module-scoped TaskCardImpl. Defining the impl outside App means React
   // keeps it stable across App re-renders, so the review-form draft state
   // (checklist, problems, confidence, note) is NEVER wiped mid-edit.
+  // Jump from a TaskCard straight into Claude → Doubt with the sub-topics
+  // pre-filled. If specific weak sub-topics are passed, the prompt asks for
+  // those; otherwise it asks about the whole topic.
+  const askClaudeFromTask = (t: DayTask, subtopics: string[]) => {
+    const subjLabel = t.subject.charAt(0).toUpperCase() + t.subject.slice(1);
+    const list = subtopics.length > 0
+      ? subtopics.map(s => `• ${s}`).join("\n")
+      : `• ${t.topic}`;
+    const q = `Please explain the following ${subjLabel} sub-topics from chapter "${t.chapterName}" (CBSE Class 12), where Shikhar is weak. For each one give the core concept in simple terms, the key formula(s), one fully worked example, and one common mistake to avoid.\n\n${list}`;
+    setDoubtQ(q);
+    setDoubtImg(null);
+    setDoubtPreview("");
+    setDoubtAns("");
+    setDoubtErr("");
+    setCheckTab("doubt");
+    setView("check");
+    try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch { /* noop */ }
+  };
+
+  // Jump from a TaskCard straight into Claude → Check Work with this exact
+  // task pre-selected on its scheduled date.
+  const checkWorkFromTask = (t: DayTask, e: ProgressEntry | undefined) => {
+    if (e?.date) setCheckDate(e.date);
+    setCheckSelTaskId(t.id);
+    setCheckImages([]);
+    setCheckPreviews([]);
+    setCheckResult(null);
+    setCheckAnalyzeErr("");
+    setCheckTab("work");
+    setView("check");
+    try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch { /* noop */ }
+  };
+
   const TaskCard = ({ task, idx = 0 }: { task: DayTask; idx?: number }) => (
-    <TaskCardImpl task={task} idx={idx} entry={progress[task.id]} markTask={markTask} />
+    <TaskCardImpl
+      task={task}
+      idx={idx}
+      entry={progress[task.id]}
+      markTask={markTask}
+      askDoubt={askClaudeFromTask}
+      checkWork={checkWorkFromTask}
+    />
   );
 
   // ====== Progress Bar ======
