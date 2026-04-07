@@ -2,7 +2,9 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useRegisterSW } from "virtual:pwa-register/react";
 import { SYLLABUS_LINKS, SAMPLE_PAPERS, PYQ_LINKS, GENERAL_RESOURCES, FORMULAS, PYQ_PRIORITIES, TEST_PAPERS, TAG_COLORS, type LinkSection } from "./data";
 import { analyzeWork, solveDoubt, continueDoubt, generateDailyReport, suggestErrorFix, fileToImageBlock, type ImageBlock, type AnalyzeWorkResult, type PriorAttemptCtx, type ClaudeMessage, type ContentBlock } from "./claude";
-import { jsPDF } from "jspdf";
+// jsPDF is ~50 KB gzipped — only loaded the first time the user taps
+// "Save as PDF" so it never blocks the initial app boot.
+const loadJsPDF = () => import("jspdf").then(m => m.jsPDF);
 import { getSubtopicsForChapter, deriveOverallConfidence } from "./subtopics";
 
 type Subject = "physics" | "chemistry" | "maths";
@@ -114,7 +116,9 @@ async function exportClaudeReplyAsPdf(opts: {
   const filename = `${safe}-${fileStamp}.pdf`;
 
   // A4 portrait, points. 595 x 842 pt. Margins 40 pt.
-  const doc = new jsPDF({ unit: "pt", format: "a4" });
+  // Lazy-load jsPDF (~50 KB gzipped) so it isn't in the initial bundle.
+  const JsPDFCtor = await loadJsPDF();
+  const doc = new JsPDFCtor({ unit: "pt", format: "a4" });
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   const margin = 40;
