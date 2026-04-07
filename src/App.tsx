@@ -2597,6 +2597,38 @@ export default function App() {
     const todaysReport = reports[todayISO];
     const sortedReportDates = Object.keys(reports).sort().reverse();
 
+    // What "Clear" wipes is contextual to the active tab.
+    const clearLabel =
+      tab === "work" ? "Clear photos & result"
+      : tab === "doubt" ? "Clear question & answer"
+      : "Clear today's report";
+    const canClear =
+      tab === "work" ? (checkImages.length > 0 || !!checkResult || !!checkAnalyzeErr || checkPreviews.length > 0)
+      : tab === "doubt" ? (!!doubtQ || !!doubtImg || !!doubtPreview || !!doubtAns || !!doubtErr)
+      : !!reports[fmtTodayISO()];
+    const clearActiveTab = () => {
+      if (tab === "work") {
+        setCheckImages([]);
+        setCheckPreviews([]);
+        setCheckResult(null);
+        setCheckAnalyzeErr("");
+      } else if (tab === "doubt") {
+        setDoubtQ("");
+        setDoubtImg(null);
+        setDoubtPreview("");
+        setDoubtAns("");
+        setDoubtErr("");
+      } else {
+        const iso = fmtTodayISO();
+        setReports(prev => {
+          const next = { ...prev };
+          delete next[iso];
+          return next;
+        });
+      }
+      flash("Cleared", 280);
+    };
+
     return (
       <div className="space-y-4 animate-fade-in-up">
         <SectionTitle>Claude AI Tutor</SectionTitle>
@@ -2613,6 +2645,17 @@ export default function App() {
             </button>
           ))}
         </div>
+
+        {/* Tab-contextual Clear button */}
+        <button
+          onClick={clearActiveTab}
+          disabled={!canClear}
+          className="w-full flex items-center justify-center gap-2 text-[13px] py-2 rounded-xl font-semibold transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 6h18" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+          </svg>
+          {clearLabel}
+        </button>
 
         {/* ===== CHECK WORK TAB ===== */}
         {tab === "work" && (
