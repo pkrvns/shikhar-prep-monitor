@@ -607,23 +607,29 @@ function TaskCardImpl({
               : [];
             const hasWeak = weakSubs.length > 0 || entry.topicConfidence === "bad" || entry.topicConfidence === "average";
             return (
-              <div className="mt-2 flex flex-wrap gap-1.5">
+              <div className="mt-3 grid grid-cols-2 gap-2">
                 {askDoubt && (
                   <button
                     type="button"
                     onClick={() => askDoubt(task, weakSubs)}
-                    className={`text-[11px] font-bold px-2.5 py-1 rounded-lg active:scale-95 transition-all ring-1 ${hasWeak ? "bg-brand-50 text-brand-700 ring-brand-200 hover:bg-brand-100" : "bg-gray-50 text-gray-500 ring-gray-200 hover:bg-gray-100"}`}
+                    className={`flex items-center justify-center gap-1.5 text-[14px] font-bold px-3 py-2.5 rounded-xl active:scale-[0.97] transition-all shadow-sm ${
+                      hasWeak
+                        ? "bg-gradient-to-r from-brand-500 to-brand-600 text-white shadow-brand-600/30 hover:from-brand-600 hover:to-brand-700"
+                        : "bg-white text-brand-600 ring-2 ring-brand-200 hover:bg-brand-50"
+                    }`}
                   >
-                    💡 Ask Claude{hasWeak && weakSubs.length > 0 ? ` (${weakSubs.length})` : ""}
+                    <span className="text-[16px]">💡</span>
+                    Ask Claude{hasWeak && weakSubs.length > 0 ? ` (${weakSubs.length})` : ""}
                   </button>
                 )}
                 {checkWork && (
                   <button
                     type="button"
                     onClick={() => checkWork(task, entry)}
-                    className="text-[11px] font-bold px-2.5 py-1 rounded-lg active:scale-95 transition-all ring-1 bg-gray-50 text-gray-600 ring-gray-200 hover:bg-gray-100"
+                    className="flex items-center justify-center gap-1.5 text-[14px] font-bold px-3 py-2.5 rounded-xl active:scale-[0.97] transition-all shadow-sm bg-gradient-to-r from-emerald-500 to-emerald-600 text-white shadow-emerald-600/30 hover:from-emerald-600 hover:to-emerald-700"
                   >
-                    📷 Check Shikhar&rsquo;s work
+                    <span className="text-[16px]">📷</span>
+                    Check Work
                   </button>
                 )}
               </div>
