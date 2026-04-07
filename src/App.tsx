@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRegisterSW } from "virtual:pwa-register/react";
 import { SYLLABUS_LINKS, SAMPLE_PAPERS, PYQ_LINKS, GENERAL_RESOURCES, FORMULAS, PYQ_PRIORITIES, TEST_PAPERS, TAG_COLORS, type LinkSection } from "./data";
+import { analyzeWork, solveDoubt, generateDailyReport, fileToImageBlock, type ImageBlock, type AnalyzeWorkResult } from "./claude";
 
 type Subject = "physics" | "chemistry" | "maths";
 type Phase = "foundation" | "practice" | "mock";
 type TaskStatus = "pending" | "done" | "skipped";
-type View = "dashboard" | "schedule" | "weekly" | "daily" | "errors" | "revisit" | "monthly" | "adjust" | "analytics" | "resources" | "formulas" | "evaluate";
+type View = "dashboard" | "schedule" | "weekly" | "daily" | "errors" | "revisit" | "monthly" | "adjust" | "analytics" | "resources" | "formulas" | "evaluate" | "check";
 
 interface DayTask {
   id: string;
@@ -145,6 +146,27 @@ function generateSchedule(): WeekData[] {
   return weeks;
 }
 
+// Schedule start: Apr 6, 2026 (Monday). Used for date-based "what's due by today" math.
+const SCHEDULE_START = new Date(2026, 3, 6);
+const DAY_INDEX: Record<string, number> = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
+function taskCalDate(week: number, dayName: string): Date {
+  const d = new Date(SCHEDULE_START);
+  d.setDate(d.getDate() + (week - 1) * 7 + (DAY_INDEX[dayName] ?? 0));
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+function todayMidnight(): Date {
+  const t = new Date();
+  t.setHours(0, 0, 0, 0);
+  return t;
+}
+function realWeekFromToday(): number {
+  const t = todayMidnight();
+  if (t < SCHEDULE_START) return 1;
+  const days = Math.floor((t.getTime() - SCHEDULE_START.getTime()) / 86400000);
+  return Math.max(1, Math.min(28, Math.floor(days / 7) + 1));
+}
+
 function loadData<T>(key: string, fallback: T): T {
   try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; } catch { return fallback; }
 }
@@ -188,6 +210,26 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   return <h2 className="text-[17px] font-bold text-gray-900 tracking-tight">{children}</h2>;
 }
 
+function Avatar({ name, src, size = 36, fallbackBg = "from-brand-500 to-brand-700", style }: { name: string; src?: string; size?: number; fallbackBg?: string; style?: React.CSSProperties }) {
+  const [errored, setErrored] = useState(false);
+  const initials = name.split(" ").map(p => p[0]).slice(0, 2).join("").toUpperCase();
+  const showImg = src && !errored;
+  return (
+    <div
+      className={`rounded-full overflow-hidden flex items-center justify-center text-white font-bold shadow-md ${showImg ? "" : `bg-gradient-to-br ${fallbackBg}`}`}
+      style={{ width: size, height: size, fontSize: Math.round(size * 0.36), ...style }}
+      title={name}
+      aria-label={name}
+    >
+      {showImg ? (
+        <img src={src} alt={name} onError={() => setErrored(true)} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+      ) : (
+        <span>{initials}</span>
+      )}
+    </div>
+  );
+}
+
 function EmptyState({ icon, title, subtitle }: { icon: string; title: string; subtitle: string }) {
   return (
     <div className="flex flex-col items-center justify-center py-12 px-4">
@@ -213,12 +255,24 @@ export default function App() {
   const [installPrompt, setInstallPrompt] = useState<Event | null>(null);
   const [showInstallBanner, setShowInstallBanner] = useState(false);
   const installDismissed = useRef(false);
+  const [hideUpdate, setHideUpdate] = useState(false);
+  // Daily reports keyed by YYYY-MM-DD
+  const [reports, setReports] = useState<Record<string, { text: string; generatedAt: string }>>({});
+  const reportRunning = useRef(false);
 
   // SW update handling
   const { needRefresh, updateServiceWorker } = useRegisterSW({
     onRegistered(r) { console.log("SW registered:", r); },
     onRegisterError(e) { console.log("SW error:", e); },
   });
+
+  const doUpdate = () => {
+    setHideUpdate(true);
+    try { updateServiceWorker(true); } catch (e) { console.log("update err", e); }
+    // Hard reload as a fallback in case the SW activation doesn't auto-reload
+    setTimeout(() => { window.location.reload(); }, 800);
+  };
+  const dismissUpdate = () => setHideUpdate(true);
 
   // Online/offline detection
   useEffect(() => {
@@ -255,9 +309,12 @@ export default function App() {
   useEffect(() => {
     setProgress(loadData("shikhar-progress", {}));
     setNotes(loadData("shikhar-notes", {}));
-    const aw = loadData("shikhar-active-week", 1);
-    setActW(aw); setSelW(aw);
+    // Always derive active week from today's real calendar — never trust stale localStorage value.
+    const realW = realWeekFromToday();
+    setActW(realW); setSelW(realW);
+    saveData("shikhar-active-week", realW);
     setErrors(loadData("shikhar-errors", []));
+    setReports(loadData("shikhar-reports", {}));
     setLoading(false);
   }, []);
 
@@ -288,7 +345,24 @@ export default function App() {
   const sStats = (s: Subject) => { const st = allTasks.filter(t => t.subject === s); const sd = st.filter(t => progress[t.id]?.status === "done").length; return { total: st.length, done: sd, pct: st.length ? Math.round((sd / st.length) * 100) : 0 }; };
   const wProg = (w: WeekData) => { const wt = Object.values(w.days).flat(); const wd = wt.filter(t => progress[t.id]?.status === "done").length; return { total: wt.length, done: wd, pct: wt.length ? Math.round((wd / wt.length) * 100) : 0 }; };
   const curPh: Phase = actW <= 17 ? "foundation" : actW <= 24 ? "practice" : "mock";
-  const behind = (() => { const pt = schedule.filter(w => w.week < actW).flatMap(w => Object.values(w.days).flat()); return pt.length - pt.filter(t => progress[t.id]?.status === "done").length; })();
+  // Date-based "behind": count tasks whose scheduled calendar date is on or BEFORE yesterday
+  // and are still neither done nor skipped. Today's tasks are not yet counted as behind.
+  const behind = (() => {
+    const today = todayMidnight();
+    let count = 0;
+    schedule.forEach(w => {
+      Object.entries(w.days).forEach(([day, tasks]) => {
+        const d = taskCalDate(w.week, day);
+        if (d < today) {
+          tasks.forEach(t => {
+            const st = progress[t.id]?.status;
+            if (st !== "done" && st !== "skipped") count++;
+          });
+        }
+      });
+    });
+    return count;
+  })();
 
   const getRevisitItems = () => {
     const weak = Object.values(progress).filter(p => p.status === "done" && p.rating > 0 && p.rating <= 2);
@@ -311,6 +385,82 @@ export default function App() {
   };
 
   const ph = sStats("physics"), ch = sStats("chemistry"), ma = sStats("maths");
+
+  // ---------- Daily Report helpers ----------
+  const fmtTodayISO = useCallback(() => {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }, []);
+
+  const buildReportInput = useCallback((dateISO: string) => {
+    const realW = realWeekFromToday();
+    const week = schedule[realW - 1];
+    // Find tasks scheduled for that calendar date
+    const targetDate = new Date(dateISO + "T00:00:00");
+    const tasksToday: Array<{ subject: string; topic: string; type: string; status: string }> = [];
+    schedule.forEach(w => {
+      Object.entries(w.days).forEach(([day, tasks]) => {
+        const d = taskCalDate(w.week, day);
+        if (d.getTime() === targetDate.getTime()) {
+          tasks.forEach(t => {
+            const st = progress[t.id]?.status || "pending";
+            tasksToday.push({ subject: t.subject, topic: t.topic, type: t.type, status: st });
+          });
+        }
+      });
+    });
+    // Evaluations from EvaluateView (eval-w*-*) — coarse summary
+    const evaluationsToday: Array<{ subject: string; topic: string; verdict: string; marks: string; summary: string }> = [];
+    // Errors logged today
+    const errorsToday = errors
+      .filter(e => e.date.slice(0, 10) === dateISO)
+      .map(e => ({ subject: e.subject, topic: e.topic, type: e.errorType, what: e.whatWentWrong }));
+    return {
+      date: dateISO,
+      studentName: "Shikhar",
+      weekNum: realW,
+      weekLabel: week?.label || "",
+      tasksToday,
+      evaluationsToday,
+      errorsToday,
+    };
+  }, [schedule, progress, errors]);
+
+  const runDailyReport = useCallback(async (dateISO?: string) => {
+    if (reportRunning.current) return;
+    const date = dateISO || fmtTodayISO();
+    reportRunning.current = true;
+    try {
+      const input = buildReportInput(date);
+      const res = await generateDailyReport(input);
+      if (res.ok) {
+        setReports(prev => {
+          const u = { ...prev, [date]: { text: res.text, generatedAt: new Date().toISOString() } };
+          saveData("shikhar-reports", u);
+          return u;
+        });
+        flash("Daily report ready", 660);
+      } else {
+        flash("Report failed: " + res.error.slice(0, 30), 330);
+      }
+    } finally {
+      reportRunning.current = false;
+    }
+  }, [buildReportInput, fmtTodayISO, flash]);
+
+  // Auto-generate report on app open if it's >= 21:00 IST and today's report is missing.
+  useEffect(() => {
+    if (loading) return;
+    const todayISO = fmtTodayISO();
+    if (reports[todayISO]) return;
+    const now = new Date();
+    if (now.getHours() < 21) return; // wait until 9 PM
+    // Fire and forget
+    runDailyReport(todayISO);
+  }, [loading, reports, runDailyReport, fmtTodayISO]);
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -487,9 +637,13 @@ export default function App() {
       <div className="grid grid-cols-2 gap-2.5">
         {([
           { v: "weekly" as View, title: `Week ${actW}`, sub: schedule[actW - 1]?.label, icon: "\uD83D\uDCC5", act: () => { setSelW(actW); setView("weekly"); } },
-          { v: "daily" as View, title: "Today", sub: new Date().toLocaleDateString("en-IN", { weekday: "long", month: "short", day: "numeric" }), icon: "\u2600\uFE0F", act: () => setView("daily") },
+          { v: "schedule" as View, title: "28-Week Plan", sub: "Full schedule", icon: "\uD83D\uDDD3\uFE0F", act: () => setView("schedule") },
+          { v: "monthly" as View, title: "Monthly", sub: "Calendar view", icon: "\uD83D\uDCC6", act: () => setView("monthly") },
+          { v: "analytics" as View, title: "Analytics", sub: `${pctAll}% overall`, icon: "\uD83D\uDCCA", act: () => setView("analytics") },
           { v: "errors" as View, title: "Error Journal", sub: `${errors.length} logged`, icon: "\uD83D\uDCDD", act: () => setView("errors") },
           { v: "revisit" as View, title: "Spaced Revisit", sub: `${getRevisitItems().filter(i => i.urgency === "overdue").length} overdue`, icon: "\uD83D\uDD04", act: () => setView("revisit") },
+          { v: "resources" as View, title: "Resources", sub: "CBSE links & PYQs", icon: "\uD83C\uDF10", act: () => setView("resources") },
+          { v: "evaluate" as View, title: "Evaluate Test", sub: "Score papers", icon: "\u2705", act: () => setView("evaluate") },
         ]).map(item => (
           <Card key={item.v} onClick={item.act} className="p-3.5">
             <div className="flex items-start gap-2.5">
@@ -1083,16 +1237,23 @@ export default function App() {
   };
 
   const AnalyticsView = () => {
-    const START = new Date(2026, 3, 6); // Apr 6, 2026
-    const now = new Date();
-    const daysSinceStart = Math.max(0, Math.floor((now.getTime() - START.getTime()) / 86400000));
-    const currentWeekNum = Math.min(28, Math.max(1, Math.ceil(daysSinceStart / 7)));
-    const prepStarted = now >= START;
-    const prepEnded = currentWeekNum >= 28 && daysSinceStart > 196;
+    const START = SCHEDULE_START;
+    const today = todayMidnight();
+    const daysSinceStart = Math.max(0, Math.floor((today.getTime() - START.getTime()) / 86400000));
+    const currentWeekNum = realWeekFromToday();
+    const prepStarted = today >= START;
 
-    // Tasks that SHOULD be done by now (planned)
-    const plannedWeeks = schedule.filter(w => w.week <= (prepStarted ? currentWeekNum : 0));
-    const plannedTasks = plannedWeeks.flatMap(w => Object.values(w.days).flat());
+    // Tasks that SHOULD be done by now — date-based: only tasks whose calendar date is ≤ today.
+    // (Earlier logic counted ALL tasks of the current week which made every Monday inflate "pending" by 7-9.)
+    const plannedTasks: DayTask[] = [];
+    if (prepStarted) {
+      schedule.forEach(w => {
+        Object.entries(w.days).forEach(([day, tasks]) => {
+          const d = taskCalDate(w.week, day);
+          if (d <= today) plannedTasks.push(...tasks);
+        });
+      });
+    }
     const plannedCount = plannedTasks.length;
 
     // Tasks actually done
@@ -1608,6 +1769,271 @@ export default function App() {
     );
   };
 
+  // ====== CHECK WORK / DOUBT SOLVER / DAILY REPORT (Claude) ======
+  const CheckView = () => {
+    const [tab, setTab] = useState<"work" | "doubt" | "report">("work");
+
+    // ----- Check Work tab -----
+    const todayTasks = (() => {
+      const t = todayMidnight();
+      const out: DayTask[] = [];
+      schedule.forEach(w => {
+        Object.entries(w.days).forEach(([day, ts]) => {
+          if (taskCalDate(w.week, day).getTime() === t.getTime()) out.push(...ts);
+        });
+      });
+      return out;
+    })();
+    const [selTaskId, setSelTaskId] = useState<string>(todayTasks[0]?.id || "");
+    const [images, setImages] = useState<ImageBlock[]>([]);
+    const [imgPreviews, setImgPreviews] = useState<string[]>([]);
+    const [analyzing, setAnalyzing] = useState(false);
+    const [result, setResult] = useState<AnalyzeWorkResult | null>(null);
+    const [analyzeErr, setAnalyzeErr] = useState<string>("");
+
+    const onPickFiles = async (files: FileList | null) => {
+      if (!files) return;
+      const blocks: ImageBlock[] = [];
+      const previews: string[] = [];
+      for (let i = 0; i < Math.min(files.length, 4); i++) {
+        const f = files[i];
+        try {
+          const blk = await fileToImageBlock(f);
+          blocks.push(blk);
+          previews.push(`data:${blk.source.media_type};base64,${blk.source.data}`);
+        } catch (e) {
+          console.error("img convert", e);
+        }
+      }
+      setImages(blocks);
+      setImgPreviews(previews);
+      setResult(null);
+      setAnalyzeErr("");
+    };
+
+    const runAnalyze = async () => {
+      const task = todayTasks.find(t => t.id === selTaskId) || todayTasks[0];
+      if (!task) { setAnalyzeErr("No task selected"); return; }
+      if (images.length === 0) { setAnalyzeErr("Please attach at least one photo"); return; }
+      setAnalyzing(true);
+      setResult(null);
+      setAnalyzeErr("");
+      const res = await analyzeWork({
+        taskTopic: task.topic,
+        taskSubject: task.subject,
+        taskChapter: task.chapterName,
+        images,
+        studentName: "Shikhar",
+      });
+      setAnalyzing(false);
+      if (res.ok) {
+        setResult(res.data);
+        // Auto-create error journal entries
+        res.data.mistakes.forEach(m => {
+          addError({
+            subject: task.subject,
+            chapter: task.chapterName,
+            topic: task.topic,
+            errorType: m.type,
+            question: task.topic,
+            whatWentWrong: m.what_went_wrong,
+            correctApproach: m.correct_approach,
+          });
+        });
+        // Auto-mark task done if correct
+        if (res.data.verdict === "correct") {
+          markTask(task.id, "done", 5);
+        } else if (res.data.verdict === "partial") {
+          markTask(task.id, "done", 3);
+        }
+      } else {
+        setAnalyzeErr(res.error);
+      }
+    };
+
+    // ----- Doubt Solver tab -----
+    const [doubtQ, setDoubtQ] = useState("");
+    const [doubtImg, setDoubtImg] = useState<ImageBlock | null>(null);
+    const [doubtPreview, setDoubtPreview] = useState<string>("");
+    const [solving, setSolving] = useState(false);
+    const [doubtAns, setDoubtAns] = useState<string>("");
+    const [doubtErr, setDoubtErr] = useState<string>("");
+
+    const onDoubtFile = async (files: FileList | null) => {
+      if (!files || !files[0]) { setDoubtImg(null); setDoubtPreview(""); return; }
+      const blk = await fileToImageBlock(files[0]);
+      setDoubtImg(blk);
+      setDoubtPreview(`data:${blk.source.media_type};base64,${blk.source.data}`);
+    };
+
+    const runDoubt = async () => {
+      if (!doubtQ.trim() && !doubtImg) { setDoubtErr("Enter a question or attach a photo"); return; }
+      setSolving(true); setDoubtAns(""); setDoubtErr("");
+      const res = await solveDoubt(doubtQ, doubtImg || undefined);
+      setSolving(false);
+      if (res.ok) setDoubtAns(res.text); else setDoubtErr(res.error);
+    };
+
+    // ----- Daily Report tab -----
+    const todayISO = fmtTodayISO();
+    const todaysReport = reports[todayISO];
+    const sortedReportDates = Object.keys(reports).sort().reverse();
+
+    return (
+      <div className="space-y-4 animate-fade-in-up">
+        <SectionTitle>Claude AI Tutor</SectionTitle>
+        {/* Tabs */}
+        <div className="flex gap-1.5">
+          {([
+            { k: "work" as const, label: "Check Work" },
+            { k: "doubt" as const, label: "Doubt" },
+            { k: "report" as const, label: "Report" },
+          ]).map(t => (
+            <button key={t.k} onClick={() => setTab(t.k)}
+              className={`flex-1 text-[14px] py-2 rounded-xl font-semibold transition-all active:scale-95 ${tab === t.k ? "bg-brand-600 text-white shadow-sm" : "bg-gray-50 text-gray-500 hover:bg-gray-100"}`}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* ===== CHECK WORK TAB ===== */}
+        {tab === "work" && (
+          <>
+            <Card className="p-4">
+              <p className="text-[12px] font-bold text-gray-400 uppercase tracking-widest mb-2">Today&rsquo;s Task</p>
+              {todayTasks.length === 0 ? (
+                <p className="text-[14px] text-gray-500">No tasks scheduled for today.</p>
+              ) : (
+                <select value={selTaskId} onChange={e => setSelTaskId(e.target.value)} className="w-full text-[14px] text-gray-700 border border-gray-200 rounded-xl px-3 py-2.5 bg-white">
+                  {todayTasks.map(t => (
+                    <option key={t.id} value={t.id}>{SUBJ[t.subject].icon} &mdash; {t.topic}</option>
+                  ))}
+                </select>
+              )}
+            </Card>
+
+            <Card className="p-4">
+              <p className="text-[12px] font-bold text-gray-400 uppercase tracking-widest mb-2">Upload Shikhar&rsquo;s Solved Work</p>
+              <label className="block w-full border-2 border-dashed border-gray-200 rounded-xl py-6 text-center cursor-pointer hover:border-brand-300 hover:bg-brand-50/30 transition-all">
+                <input type="file" accept="image/*" multiple capture="environment" onChange={e => onPickFiles(e.target.files)} className="hidden" />
+                <p className="text-[14px] text-gray-500 font-semibold">📷 Tap to take or choose photo(s)</p>
+                <p className="text-[12px] text-gray-400 mt-1">Up to 4 photos &middot; auto-resized</p>
+              </label>
+              {imgPreviews.length > 0 && (
+                <div className="grid grid-cols-4 gap-2 mt-3">
+                  {imgPreviews.map((p, i) => (
+                    <img key={i} src={p} alt={`preview ${i + 1}`} className="w-full h-20 object-cover rounded-lg border border-gray-100" />
+                  ))}
+                </div>
+              )}
+              <button onClick={runAnalyze} disabled={analyzing || images.length === 0 || todayTasks.length === 0}
+                className="mt-3 w-full bg-brand-600 disabled:bg-gray-300 text-white text-[14px] py-3 rounded-xl font-semibold active:scale-[0.98] transition-all">
+                {analyzing ? "Analyzing with Claude…" : "Analyze with Claude"}
+              </button>
+              {analyzeErr && <p className="text-[12px] text-red-500 mt-2 font-semibold">⚠️ {analyzeErr}</p>}
+            </Card>
+
+            {result && (
+              <Card className={`p-4 border-2 ${result.verdict === "correct" ? "border-emerald-200 bg-emerald-50/40" : result.verdict === "partial" ? "border-amber-200 bg-amber-50/40" : "border-red-200 bg-red-50/40"}`}>
+                <div className="flex items-center justify-between mb-2">
+                  <Badge className={result.verdict === "correct" ? "bg-emerald-100 text-emerald-700" : result.verdict === "partial" ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"}>
+                    {result.verdict.toUpperCase()}
+                  </Badge>
+                  <p className="text-[16px] font-black text-gray-800">{result.marks_awarded} / {result.marks_max}</p>
+                </div>
+                <p className="text-[14px] text-gray-700 leading-relaxed mb-3">{result.summary}</p>
+                {result.mistakes.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-[12px] font-bold text-gray-500 uppercase tracking-widest">Mistakes ({result.mistakes.length})</p>
+                    {result.mistakes.map((m, i) => (
+                      <div key={i} className="bg-white rounded-xl p-3 border border-gray-100">
+                        <Badge className="bg-red-50 text-red-600 mb-1">{m.type}</Badge>
+                        <p className="text-[13px] text-gray-700"><b>Wrong:</b> {m.what_went_wrong}</p>
+                        <p className="text-[13px] text-gray-700 mt-1"><b>Correct:</b> {m.correct_approach}</p>
+                      </div>
+                    ))}
+                    <p className="text-[11px] text-gray-400 italic">✓ Auto-added to Error Journal</p>
+                  </div>
+                )}
+                <div className="mt-3 pt-3 border-t border-gray-200">
+                  <p className="text-[12px] font-bold text-gray-500 uppercase tracking-widest mb-1">Next Steps</p>
+                  <p className="text-[14px] text-gray-700">{result.next_steps}</p>
+                </div>
+              </Card>
+            )}
+          </>
+        )}
+
+        {/* ===== DOUBT SOLVER TAB ===== */}
+        {tab === "doubt" && (
+          <>
+            <Card className="p-4">
+              <p className="text-[12px] font-bold text-gray-400 uppercase tracking-widest mb-2">Ask a Doubt</p>
+              <textarea value={doubtQ} onChange={e => setDoubtQ(e.target.value)} placeholder="Type your question or paste it here…"
+                className="w-full text-[14px] text-gray-700 border border-gray-200 rounded-xl px-3 py-2.5 bg-white min-h-[100px]" />
+              <label className="block mt-2 w-full border border-dashed border-gray-200 rounded-xl py-3 text-center cursor-pointer hover:border-brand-300 transition-all">
+                <input type="file" accept="image/*" capture="environment" onChange={e => onDoubtFile(e.target.files)} className="hidden" />
+                <p className="text-[13px] text-gray-500">📷 Optional: attach a photo of the question</p>
+              </label>
+              {doubtPreview && <img src={doubtPreview} alt="doubt" className="w-full max-h-40 object-contain rounded-lg border border-gray-100 mt-2" />}
+              <button onClick={runDoubt} disabled={solving}
+                className="mt-3 w-full bg-brand-600 disabled:bg-gray-300 text-white text-[14px] py-3 rounded-xl font-semibold active:scale-[0.98] transition-all">
+                {solving ? "Solving…" : "Solve with Claude"}
+              </button>
+              {doubtErr && <p className="text-[12px] text-red-500 mt-2 font-semibold">⚠️ {doubtErr}</p>}
+            </Card>
+            {doubtAns && (
+              <Card className="p-4">
+                <p className="text-[12px] font-bold text-brand-600 uppercase tracking-widest mb-2">Solution</p>
+                <pre className="text-[13px] text-gray-700 whitespace-pre-wrap font-sans leading-relaxed">{doubtAns}</pre>
+              </Card>
+            )}
+          </>
+        )}
+
+        {/* ===== DAILY REPORT TAB ===== */}
+        {tab === "report" && (
+          <>
+            <Card className="p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p className="text-[12px] font-bold text-gray-400 uppercase tracking-widest">Today&rsquo;s Report</p>
+                  <p className="text-[13px] text-gray-500">{new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" })}</p>
+                </div>
+                <button onClick={() => runDailyReport()} disabled={reportRunning.current}
+                  className="bg-brand-600 disabled:bg-gray-300 text-white text-[12px] font-bold px-3 py-2 rounded-xl active:scale-95">
+                  {reportRunning.current ? "Generating…" : todaysReport ? "Regenerate" : "Generate Now"}
+                </button>
+              </div>
+              {todaysReport ? (
+                <>
+                  <pre className="text-[13px] text-gray-700 whitespace-pre-wrap font-sans leading-relaxed bg-gray-50 rounded-xl p-3 border border-gray-100">{todaysReport.text}</pre>
+                  <p className="text-[11px] text-gray-400 mt-2">Generated {new Date(todaysReport.generatedAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}</p>
+                </>
+              ) : (
+                <p className="text-[13px] text-gray-500 italic">Auto-generates after 9:00 PM. Tap &ldquo;Generate Now&rdquo; for an instant report.</p>
+              )}
+            </Card>
+
+            {sortedReportDates.length > 1 && (
+              <Card className="p-4">
+                <p className="text-[12px] font-bold text-gray-400 uppercase tracking-widest mb-2">Past Reports</p>
+                <div className="space-y-2">
+                  {sortedReportDates.filter(d => d !== todayISO).slice(0, 7).map(d => (
+                    <details key={d} className="bg-gray-50 rounded-xl p-3 border border-gray-100">
+                      <summary className="text-[13px] font-semibold text-gray-700 cursor-pointer">{new Date(d + "T00:00:00").toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" })}</summary>
+                      <pre className="text-[12px] text-gray-600 whitespace-pre-wrap font-sans leading-relaxed mt-2">{reports[d].text}</pre>
+                    </details>
+                  ))}
+                </div>
+              </Card>
+            )}
+          </>
+        )}
+      </div>
+    );
+  };
+
   const AdjustView = () => {
     const [markWeek, setMarkWeek] = useState(actW);
     const [confirmReset, setConfirmReset] = useState(false);
@@ -1655,31 +2081,31 @@ export default function App() {
 
   // ====== Navigation ======
   const navItems: { v: View; label: string; icon: React.ReactNode }[] = [
-    { v: "dashboard", label: "Home", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> },
-    { v: "schedule", label: "Schedule", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg> },
-    { v: "weekly", label: "Week", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> },
-    { v: "daily", label: "Today", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> },
-    { v: "monthly", label: "Monthly", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg> },
-    { v: "analytics", label: "Analytics", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg> },
-    { v: "formulas", label: "Formulas", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg> },
-    { v: "evaluate", label: "Evaluate", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> },
-    { v: "resources", label: "Resources", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> },
+    { v: "dashboard", label: "Home", icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> },
+    { v: "daily", label: "Today", icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> },
+    { v: "formulas", label: "Formulas", icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg> },
+    { v: "evaluate", label: "Evaluate", icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> },
+    { v: "check", label: "Claude", icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> },
   ];
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "#f8fafc", overflow: "hidden" }}>
       {/* Header */}
-      <div style={{ flexShrink: 0, background: "#fff", borderBottom: "1px solid #e5e7eb", zIndex: 20 }}>
+      <div style={{ flexShrink: 0, background: "#fff", borderBottom: "1px solid #e5e7eb", zIndex: 20, paddingTop: "env(safe-area-inset-top)" }}>
         <div className="max-w-2xl mx-auto px-4">
-          <div className="flex items-center justify-between h-14">
+          <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center text-white text-sm font-bold shadow-lg shadow-brand-600/20">S</div>
+              {/* Stacked avatars: Shikhar (front) + Shweta (back) */}
+              <div className="flex items-center" style={{ position: "relative", width: 56, height: 36 }}>
+                <Avatar name="Shweta" src="/shweta.jpg" size={36} fallbackBg="from-pink-400 to-rose-500" style={{ position: "absolute", left: 0, zIndex: 1, border: "2px solid #fff" }} />
+                <Avatar name="Shikhar" src="/shikhar.jpg" size={36} fallbackBg="from-brand-500 to-brand-700" style={{ position: "absolute", left: 20, zIndex: 2, border: "2px solid #fff" }} />
+              </div>
               <div>
-                <h1 className="text-[16px] font-bold text-gray-900 leading-tight tracking-tight">Shikhar Prep Monitor</h1>
-                <p className="text-[16px] text-gray-400 font-medium">Managed by Shweta &middot; Week {actW}</p>
+                <h1 className="text-[15px] font-bold text-gray-900 leading-tight tracking-tight">Shikhar Prep Monitor</h1>
+                <p className="text-[12px] text-gray-400 font-medium">Managed by Shweta &middot; Week {actW}</p>
               </div>
             </div>
-            {behind > 5 && <div className="bg-red-50 text-red-600 text-[16px] font-bold px-2.5 py-1 rounded-full ring-1 ring-red-500/10">{behind} behind</div>}
+            {behind > 5 && <div className="bg-red-50 text-red-600 text-[12px] font-bold px-2.5 py-1 rounded-full ring-1 ring-red-500/10">{behind} behind</div>}
           </div>
         </div>
       </div>
@@ -1697,10 +2123,13 @@ export default function App() {
       )}
 
       {/* SW update banner */}
-      {needRefresh && (
+      {needRefresh && !hideUpdate && (
         <div style={{ flexShrink: 0, background: "#4f46e5", zIndex: 18 }} className="px-4 py-2 flex items-center justify-between gap-2">
           <span className="text-[13px] font-semibold text-white">New version available</span>
-          <button onClick={() => updateServiceWorker(true)} className="bg-white text-brand-600 text-[12px] font-bold px-3 py-1 rounded-lg active:scale-95">Update</button>
+          <div className="flex items-center gap-2">
+            <button onClick={doUpdate} className="bg-white text-brand-600 text-[12px] font-bold px-3 py-1 rounded-lg active:scale-95">Update</button>
+            <button onClick={dismissUpdate} aria-label="Dismiss" className="text-white text-[16px] font-bold px-2 py-0.5 active:scale-90">{"\u00D7"}</button>
+          </div>
         </div>
       )}
 
@@ -1735,20 +2164,21 @@ export default function App() {
           {view === "resources" && <ResourcesView />}
           {view === "formulas" && <FormulasView />}
           {view === "evaluate" && <EvaluateView />}
+          {view === "check" && <CheckView />}
           {view === "adjust" && <AdjustView />}
         </div>
       </div>
 
       {/* Bottom Navigation */}
-      <nav style={{ flexShrink: 0, background: "#ffffff", borderTop: "1px solid #e5e7eb", boxShadow: "0 -2px 10px rgba(0,0,0,0.06)", zIndex: 20 }}>
+      <nav style={{ flexShrink: 0, background: "#ffffff", borderTop: "1px solid #e5e7eb", boxShadow: "0 -2px 10px rgba(0,0,0,0.06)", zIndex: 20, paddingBottom: "env(safe-area-inset-bottom)" }}>
         <div className="max-w-2xl mx-auto px-1">
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-around", padding: "8px 0 12px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-around", padding: "8px 0 10px" }}>
             {navItems.map(({ v, label, icon }) => (
               <button key={v} onClick={() => { setView(v); if (v === "weekly") setSelW(actW); }}
-                style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, padding: "4px 6px", minWidth: 40, border: "none", background: "none", cursor: "pointer" }}
+                style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "4px 8px", minWidth: 56, border: "none", background: "none", cursor: "pointer" }}
                 className={`rounded-xl transition-all active:scale-90 ${view === v ? "text-brand-600" : "text-gray-400 hover:text-gray-600"}`}>
                 <div className={`transition-all ${view === v ? "scale-110" : ""}`}>{icon}</div>
-                <span className={`text-[10px] font-semibold leading-none ${view === v ? "text-brand-600" : "text-gray-400"}`}>{label}</span>
+                <span className={`text-[11px] font-semibold leading-none ${view === v ? "text-brand-600" : "text-gray-400"}`}>{label}</span>
                 {view === v && <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#4f46e5", marginTop: 2 }} />}
               </button>
             ))}
