@@ -9,7 +9,17 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: "autoUpdate",
-      includeAssets: ["icon.svg", "icon-192.png", "icon-512.png", "icon-maskable-512.png", "apple-touch-icon.png"],
+      includeAssets: [
+        "icon.svg",
+        "icon-192.png",
+        "icon-512.png",
+        "icon-maskable-512.png",
+        "apple-touch-icon.png",
+        "apple-touch-icon-180.png",
+        "apple-touch-icon-167.png",
+        "apple-touch-icon-152.png",
+        "apple-touch-icon-120.png",
+      ],
       manifest: {
         name: "Shikhar Prep Monitor",
         short_name: "Shikhar",

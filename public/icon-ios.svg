@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#3730a3"/>
+    </linearGradient>
+    <linearGradient id="cap" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#e0e7ff"/>
+    </linearGradient>
+    <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="12" stdDeviation="20" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+
+  <!-- Full-bleed solid background. iOS rounds the corners automatically,
+       so this MUST be a square with no transparency and no pre-rounding. -->
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+
+  <!-- Subtle top highlight for depth -->
+  <rect width="1024" height="512" fill="#ffffff" fill-opacity="0.07"/>
+
+  <!-- Graduation cap (mortarboard) -->
+  <g filter="url(#shadow)" transform="translate(0,12)">
+    <!-- Mortarboard top (square diamond) -->
+    <path d="M512 240 L840 372 L512 504 L184 372 Z" fill="url(#cap)"/>
+    <!-- Mortarboard band -->
+    <path d="M296 420 L296 564 Q296 640 512 640 Q728 640 728 564 L728 420 L512 508 Z" fill="#e0e7ff"/>
+    <!-- Tassel -->
+    <line x1="840" y1="372" x2="840" y2="476" stroke="#fbbf24" stroke-width="14" stroke-linecap="round"/>
+    <circle cx="840" cy="492" r="22" fill="#fbbf24"/>
+  </g>
+
+  <!-- Big bold S -->
+  <text x="512" y="876"
+        font-family="-apple-system, system-ui, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif"
+        font-size="296" font-weight="900" text-anchor="middle"
+        fill="#ffffff" letter-spacing="-8">S</text>
+</svg>
