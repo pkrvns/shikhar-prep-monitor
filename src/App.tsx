@@ -1517,6 +1517,34 @@ export default function App() {
     setCheckAnalyzeErr("");
   }, [loading, checkDate, schedule]);
 
+  // Append a chunk of streamed text to the LAST assistant message in the
+  // active doubt thread. Used as the onDelta callback for streamDoubt().
+  // MUST be declared before the `if (loading) return` early return below
+  // so React's hook order stays stable across renders.
+  const appendStreamChunk = useCallback((chunk: string) => {
+    setDoubtThreads(prev => {
+      const cur = prev[activeDoubtKey];
+      if (!cur || cur.messages.length === 0) return prev;
+      const lastIdx = cur.messages.length - 1;
+      const last = cur.messages[lastIdx];
+      if (last.role !== "assistant") return prev;
+      const newText = (typeof last.content === "string" ? last.content : "") + chunk;
+      const newMessages = [...cur.messages];
+      newMessages[lastIdx] = { role: "assistant", content: newText };
+      const u: Record<string, DoubtThread> = {
+        ...prev,
+        [activeDoubtKey]: { ...cur, messages: newMessages, updatedAt: new Date().toISOString() },
+      };
+      // Don't persist on every token — too chatty. Only on the first chunk
+      // (so a refresh mid-stream still recovers something) and then every
+      // ~250 chars worth of new text.
+      if (newText.length < 80 || newText.length % 250 < chunk.length) {
+        saveData("shikhar-doubt-threads", threadsForStorage(u));
+      }
+      return u;
+    });
+  }, [activeDoubtKey]);
+
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="flex flex-col items-center gap-3">
@@ -3052,34 +3080,6 @@ export default function App() {
     setDoubtReplyImg(blk);
     setDoubtReplyPreview(`data:${blk.source.media_type};base64,${blk.source.data}`);
   };
-
-  // Append a chunk of streamed text to the LAST assistant message in the
-  // active doubt thread. Used as the onDelta callback for streamDoubt().
-  // Persists to localStorage on every chunk via the setDoubtThreads writer
-  // — that's cheap because messagesForStorage strips images.
-  const appendStreamChunk = useCallback((chunk: string) => {
-    setDoubtThreads(prev => {
-      const cur = prev[activeDoubtKey];
-      if (!cur || cur.messages.length === 0) return prev;
-      const lastIdx = cur.messages.length - 1;
-      const last = cur.messages[lastIdx];
-      if (last.role !== "assistant") return prev;
-      const newText = (typeof last.content === "string" ? last.content : "") + chunk;
-      const newMessages = [...cur.messages];
-      newMessages[lastIdx] = { role: "assistant", content: newText };
-      const u: Record<string, DoubtThread> = {
-        ...prev,
-        [activeDoubtKey]: { ...cur, messages: newMessages, updatedAt: new Date().toISOString() },
-      };
-      // Don't persist on every token — too chatty. Only on the first chunk
-      // (so a refresh mid-stream still recovers something) and then every
-      // ~250 chars worth of new text.
-      if (newText.length < 80 || newText.length % 250 < chunk.length) {
-        saveData("shikhar-doubt-threads", threadsForStorage(u));
-      }
-      return u;
-    });
-  }, [activeDoubtKey]);
 
   // Run a streaming doubt with the given user message + history. Pushes the
   // user msg + an empty assistant placeholder, opens the stream, fills the
