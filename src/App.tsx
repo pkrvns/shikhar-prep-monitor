@@ -1475,7 +1475,11 @@ export default function App() {
         });
         flash("Daily report ready", 660);
       } else {
-        flash("Report failed: " + res.error.slice(0, 30), 330);
+        // Vite dev server doesn't serve /api/* — only `vercel dev` or
+        // production does. Swallow the resulting 404 silently in dev so the
+        // auto-trigger at 21:00 doesn't spam the toast.
+        const isDev404 = import.meta.env.DEV && /HTTP 404/.test(res.error);
+        if (!isDev404) flash("Report failed: " + res.error.slice(0, 30), 330);
       }
     } finally {
       reportRunning.current = false;
