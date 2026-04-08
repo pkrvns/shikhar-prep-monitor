@@ -78,10 +78,17 @@ export default async function handler(
   // Defensive 60s wall on the upstream call. Vercel will already kill us at
   // maxDuration, but giving fetch its own AbortSignal lets us return a
   // friendlier error message before that happens.
+  //
+  // NOTE: we deliberately do NOT register a `req.on("close")` listener here
+  // to abort on client disconnect. Vercel's bodyParser fully consumes and
+  // ends the request stream before invoking this handler, so 'close' fires
+  // immediately on the next tick — which would abort the upstream fetch
+  // before it even starts and surface as HTTP 500. The 55 s timeout above
+  // plus maxDuration:60 already prevent runaway functions, and for the
+  // streaming path the response pipe naturally errors out when the client
+  // disconnects, so the listener was redundant anyway.
   const ac = new AbortController();
   const upstreamTimeout = setTimeout(() => ac.abort(), 55_000);
-  // If the client disconnects (user tapped Stop), kill the upstream call too.
-  req.on("close", () => { try { ac.abort(); } catch { /* noop */ } });
 
   const wantStream = body.stream === true;
 
