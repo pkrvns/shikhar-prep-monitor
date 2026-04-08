@@ -13,6 +13,7 @@
 // Claude responses we're sending.
 
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { Readable } from "node:stream";
 
 export const config = {
   // 12 MB body cap covers ~3 photos at 3-4 MB each.
@@ -56,7 +57,7 @@ export default async function handler(
 
   // Vercel auto-parses JSON bodies for Node functions. If for any reason
   // it didn't (e.g. wrong content-type), parse manually from the raw stream.
-  let body: { model?: string; system?: string; messages?: unknown; max_tokens?: number } | null = null;
+  let body: { model?: string; system?: string; messages?: unknown; max_tokens?: number; stream?: boolean } | null = null;
   if (req.body && typeof req.body === "object") {
     body = req.body as typeof body;
   } else {
@@ -79,6 +80,10 @@ export default async function handler(
   // friendlier error message before that happens.
   const ac = new AbortController();
   const upstreamTimeout = setTimeout(() => ac.abort(), 55_000);
+  // If the client disconnects (user tapped Stop), kill the upstream call too.
+  req.on("close", () => { try { ac.abort(); } catch { /* noop */ } });
+
+  const wantStream = body.stream === true;
 
   let upstream: Response;
   try {
@@ -94,6 +99,7 @@ export default async function handler(
         max_tokens: body.max_tokens || DEFAULT_MAX_TOKENS,
         system: body.system,
         messages: body.messages,
+        stream: wantStream || undefined,
       }),
       signal: ac.signal,
     });
@@ -110,6 +116,37 @@ export default async function handler(
     });
     return;
   }
+
+  // ----- STREAMING PATH -----
+  // Anthropic returns its own SSE stream when stream:true. We forward those
+  // bytes verbatim — the client parses message_delta events and renders
+  // tokens as they arrive. No buffering on our side.
+  if (wantStream && upstream.body) {
+    res.statusCode = upstream.status;
+    res.setHeader("content-type", upstream.status === 200 ? "text/event-stream" : "application/json");
+    res.setHeader("cache-control", "no-store, no-transform");
+    res.setHeader("access-control-allow-origin", "*");
+    // x-accel-buffering: no disables Vercel/proxy response buffering so
+    // tokens actually arrive incrementally instead of in one big flush.
+    res.setHeader("x-accel-buffering", "no");
+    res.setHeader("connection", "keep-alive");
+    try {
+      // Convert the Web ReadableStream from fetch into a Node Readable so
+      // we can pipe it to the response. Works on Node 18+ (Vercel runtime).
+      const nodeStream = Readable.fromWeb(upstream.body as unknown as Parameters<typeof Readable.fromWeb>[0]);
+      nodeStream.on("error", (err) => {
+        try { res.end(); } catch { /* noop */ }
+        console.error("stream error:", err);
+      });
+      nodeStream.pipe(res);
+      nodeStream.on("end", () => clearTimeout(upstreamTimeout));
+    } catch (e) {
+      clearTimeout(upstreamTimeout);
+      sendJson(res, 502, { error: { type: "stream_pipe_failed", message: e instanceof Error ? e.message : String(e) } });
+    }
+    return;
+  }
+
   clearTimeout(upstreamTimeout);
 
   const text = await upstream.text();

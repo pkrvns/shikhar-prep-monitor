@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRegisterSW } from "virtual:pwa-register/react";
 import { SYLLABUS_LINKS, SAMPLE_PAPERS, PYQ_LINKS, GENERAL_RESOURCES, FORMULAS, PYQ_PRIORITIES, TEST_PAPERS, TAG_COLORS, type LinkSection } from "./data";
-import { analyzeWork, solveDoubt, continueDoubt, generateDailyReport, suggestErrorFix, fileToImageBlock, type ImageBlock, type AnalyzeWorkResult, type PriorAttemptCtx, type ClaudeMessage, type ContentBlock } from "./claude";
+import { analyzeWork, streamDoubt, generateDailyReport, suggestErrorFix, fileToImageBlock, type ImageBlock, type AnalyzeWorkResult, type PriorAttemptCtx, type ClaudeMessage, type ContentBlock } from "./claude";
 // jsPDF is ~50 KB gzipped — only loaded the first time the user taps
 // "Save as PDF" so it never blocks the initial app boot.
 const loadJsPDF = () => import("jspdf").then(m => m.jsPDF);
@@ -57,6 +57,16 @@ interface ErrorEntry {
   correctApproach: string;
   resolved: boolean;
   claudeTip?: string; // personalised improvement suggestion from Claude
+}
+
+// A persisted multi-turn Claude doubt conversation. Keyed in the
+// `doubtThreads` map by either the originating task id or the literal
+// string "general" for free-form doubts started from the doubt tab.
+interface DoubtThread {
+  id: string;          // taskId or "general"
+  label: string;       // e.g. "Physics – EM Induction" or "General doubts"
+  messages: ClaudeMessage[];
+  updatedAt: string;   // ISO
 }
 
 // One Claude analysis of one upload of one task. Many submissions can exist
@@ -393,8 +403,151 @@ function realWeekFromToday(): number {
 function loadData<T>(key: string, fallback: T): T {
   try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; } catch { return fallback; }
 }
-function saveData(key: string, data: unknown) {
-  try { localStorage.setItem(key, JSON.stringify(data)); } catch (e) { console.error(e); }
+
+// ---------- Storage quota guard ----------
+//
+// Mobile Safari only gives PWAs ~5–10 MB of localStorage. Once we hit it,
+// every subsequent setItem silently fails — so progress, errors, even daily
+// reports stop persisting and the user has no idea their work is being lost.
+//
+// We defend against this in three layers:
+//   1. Bounded arrays — submissions/errors/reports are capped on every write
+//      via boundedAppend() so they can never grow unboundedly.
+//   2. Quota recovery — if setItem still throws QuotaExceededError, we
+//      aggressively prune the oldest non-critical entries and retry once.
+//   3. User-visible warning — onQuotaWarning() (set by App on mount) flips a
+//      header badge to amber so Shweta knows to export a backup.
+
+const STORAGE_CAPS = {
+  submissions: 150,
+  errors: 300,
+  reports: 60,
+  doubtThreads: 30,
+} as const;
+
+// Hooked up by App on mount so saveData() can flash a UI warning when the
+// quota gets close — without saveData needing to know about React state.
+let onQuotaWarning: (msg: string) => void = () => {};
+function isQuotaError(e: unknown): boolean {
+  if (!e || typeof e !== "object") return false;
+  const err = e as { name?: string; code?: number };
+  return err.name === "QuotaExceededError"
+      || err.name === "NS_ERROR_DOM_QUOTA_REACHED" // Firefox
+      || err.code === 22 || err.code === 1014;
+}
+
+// Aggressively prune the oldest non-critical entries from each capped key.
+// Called only on quota recovery — daily writes go through boundedAppend.
+function pruneOldestEntries(): void {
+  try {
+    // Submissions: keep newest 100 (more aggressive than the soft cap).
+    const subsRaw = localStorage.getItem("shikhar-submissions");
+    if (subsRaw) {
+      const subs = JSON.parse(subsRaw) as WorkSubmission[];
+      if (Array.isArray(subs) && subs.length > 100) {
+        const trimmed = [...subs].sort((a, b) => (b.submittedAt || "").localeCompare(a.submittedAt || "")).slice(0, 100);
+        localStorage.setItem("shikhar-submissions", JSON.stringify(trimmed));
+      }
+    }
+    // Errors: keep newest 200, but never drop unresolved ones.
+    const errsRaw = localStorage.getItem("shikhar-errors");
+    if (errsRaw) {
+      const errs = JSON.parse(errsRaw) as ErrorEntry[];
+      if (Array.isArray(errs) && errs.length > 200) {
+        const unresolved = errs.filter(e => !e.resolved);
+        const resolved = errs.filter(e => e.resolved).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+        const keep = unresolved.length >= 200 ? unresolved : [...unresolved, ...resolved.slice(0, 200 - unresolved.length)];
+        localStorage.setItem("shikhar-errors", JSON.stringify(keep));
+      }
+    }
+    // Reports: keep newest 30 (≈1 month).
+    const repsRaw = localStorage.getItem("shikhar-reports");
+    if (repsRaw) {
+      const reps = JSON.parse(repsRaw) as Record<string, { text: string; generatedAt: string }>;
+      const dates = Object.keys(reps).sort().reverse();
+      if (dates.length > 30) {
+        const trimmed: typeof reps = {};
+        for (const d of dates.slice(0, 30)) trimmed[d] = reps[d];
+        localStorage.setItem("shikhar-reports", JSON.stringify(trimmed));
+      }
+    }
+  } catch (e) {
+    console.error("pruneOldestEntries failed:", e);
+  }
+}
+
+function saveData(key: string, data: unknown): boolean {
+  const json = JSON.stringify(data);
+  try {
+    localStorage.setItem(key, json);
+    return true;
+  } catch (e) {
+    if (isQuotaError(e)) {
+      try {
+        pruneOldestEntries();
+        localStorage.setItem(key, json);
+        onQuotaWarning("Storage almost full — old entries pruned. Export a backup soon.");
+        return true;
+      } catch (e2) {
+        console.error("saveData retry failed:", key, e2);
+      }
+    }
+    console.error("saveData failed:", key, e);
+    onQuotaWarning("Storage full — could not save. Export a backup and reset.");
+    return false;
+  }
+}
+
+// Append `item` to `arr` and return a new array capped to `max` (newest at
+// front). Used wherever an unbounded list could otherwise grow forever.
+function boundedAppend<T>(arr: T[], item: T, max: number, mode: "front" | "back" = "front"): T[] {
+  const next = mode === "front" ? [item, ...arr] : [...arr, item];
+  return next.length > max ? (mode === "front" ? next.slice(0, max) : next.slice(next.length - max)) : next;
+}
+
+// Strip base64 image bytes from a doubt thread before persisting it. The
+// in-memory copy keeps the full image so the assistant follow-ups still see
+// it for the rest of the session, but localStorage gets a tiny placeholder
+// — otherwise a single multi-photo conversation would blow the quota.
+function messagesForStorage(messages: ClaudeMessage[]): ClaudeMessage[] {
+  return messages.map(m => {
+    if (typeof m.content === "string") return m;
+    const stripped: ContentBlock[] = m.content.map(b =>
+      b.type === "image"
+        ? { type: "text", text: "[image attached — not stored]" }
+        : b
+    );
+    return { role: m.role, content: stripped };
+  });
+}
+
+function threadsForStorage(threads: Record<string, DoubtThread>): Record<string, DoubtThread> {
+  const out: Record<string, DoubtThread> = {};
+  // Cap to STORAGE_CAPS.doubtThreads most-recently-updated threads.
+  const sorted = Object.values(threads)
+    .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""))
+    .slice(0, STORAGE_CAPS.doubtThreads);
+  for (const t of sorted) {
+    out[t.id] = { ...t, messages: messagesForStorage(t.messages) };
+  }
+  return out;
+}
+
+// Estimate current localStorage usage in bytes by stringifying every key
+// belonging to this app. Cheap enough to call after each save.
+function estimateStorageBytes(): number {
+  try {
+    let bytes = 0;
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k || !k.startsWith("shikhar-")) continue;
+      const v = localStorage.getItem(k) || "";
+      bytes += k.length + v.length;
+    }
+    return bytes * 2; // UTF-16 code units → bytes
+  } catch {
+    return 0;
+  }
 }
 function playBeep(freq = 880, dur = 0.2) {
   try {
@@ -940,6 +1093,9 @@ export default function App() {
   // Daily reports keyed by YYYY-MM-DD
   const [reports, setReports] = useState<Record<string, { text: string; generatedAt: string }>>({});
   const reportRunning = useRef(false);
+  // Storage health: amber banner when usage > 4 MB or saveData recovered
+  // from a quota error. Details button shows a per-key byte breakdown.
+  const [storageWarning, setStorageWarning] = useState<string>("");
 
   // ---------- CheckView state (lifted to App so it survives App re-renders) ----------
   // CheckView is defined inside App() which means it remounts on every parent
@@ -962,14 +1118,37 @@ export default function App() {
   const [doubtSolving, setDoubtSolving] = useState(false);
   const [doubtAns, setDoubtAns] = useState<string>("");
   const [doubtErr, setDoubtErr] = useState<string>("");
-  // Multi-turn doubt chat: full conversation history Claude sees on every
-  // follow-up. Empty until the first solve.
-  const [doubtChat, setDoubtChat] = useState<ClaudeMessage[]>([]);
+  // Multi-turn doubt chat — now persistent and keyed per task. The full
+  // conversation history Claude sees on every follow-up lives in
+  // `doubtThreads[activeDoubtKey].messages`. The legacy `doubtChat` binding
+  // below is kept as a derived view so the existing render code keeps
+  // working unchanged.
+  const [doubtThreads, setDoubtThreads] = useState<Record<string, DoubtThread>>({});
+  const [activeDoubtKey, setActiveDoubtKey] = useState<string>("general");
+  const doubtChat: ClaudeMessage[] = doubtThreads[activeDoubtKey]?.messages ?? [];
+  // Tiny shim for the few remaining writes that don't know about threads
+  // (e.g. clear button) — wraps setDoubtThreads.
+  const setDoubtChat = (next: ClaudeMessage[] | ((prev: ClaudeMessage[]) => ClaudeMessage[])) => {
+    setDoubtThreads(prev => {
+      const cur = prev[activeDoubtKey]?.messages ?? [];
+      const messages = typeof next === "function" ? next(cur) : next;
+      const label = prev[activeDoubtKey]?.label || (activeDoubtKey === "general" ? "General doubts" : "Task doubt");
+      const u: Record<string, DoubtThread> = {
+        ...prev,
+        [activeDoubtKey]: { id: activeDoubtKey, label, messages, updatedAt: new Date().toISOString() },
+      };
+      saveData("shikhar-doubt-threads", threadsForStorage(u));
+      return u;
+    });
+  };
   // Reply textarea state for follow-ups (separate from the initial doubtQ
   // input so we don't blow away the original question while replying).
   const [doubtReply, setDoubtReply] = useState<string>("");
   const [doubtReplyImg, setDoubtReplyImg] = useState<ImageBlock | null>(null);
   const [doubtReplyPreview, setDoubtReplyPreview] = useState<string>("");
+  // AbortController for the in-flight streaming doubt call. Set whenever a
+  // stream starts, cleared when it finishes; tapping "Stop" calls .abort().
+  const doubtAbortRef = useRef<AbortController | null>(null);
 
   // SW update handling
   const { needRefresh, updateServiceWorker } = useRegisterSW({
@@ -1025,6 +1204,9 @@ export default function App() {
   };
 
   useEffect(() => {
+    // Wire the module-level quota callback to React state so saveData() can
+    // surface a warning without importing anything.
+    onQuotaWarning = (msg: string) => setStorageWarning(msg);
     setProgress(loadData("shikhar-progress", {}));
     setNotes(loadData("shikhar-notes", {}));
     // Always derive active week from today's real calendar — never trust stale localStorage value.
@@ -1034,12 +1216,26 @@ export default function App() {
     setErrors(loadData("shikhar-errors", []));
     setReports(loadData("shikhar-reports", {}));
     setSubmissions(loadData("shikhar-submissions", []));
+    setDoubtThreads(loadData<Record<string, DoubtThread>>("shikhar-doubt-threads", {}));
     // Default checkDate to today (local YYYY-MM-DD)
     const now = new Date();
     const iso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
     setCheckDate(iso);
+    // Initial storage estimate so the badge shows on cold-start if needed.
+    if (estimateStorageBytes() > 4 * 1024 * 1024) {
+      setStorageWarning("Storage > 4 MB — consider exporting a backup soon.");
+    }
     setLoading(false);
+    return () => { onQuotaWarning = () => {}; };
   }, []);
+
+  // Recompute storage usage whenever any persisted data changes. Cheap.
+  useEffect(() => {
+    if (loading) return;
+    if (estimateStorageBytes() > 4 * 1024 * 1024 && !storageWarning) {
+      setStorageWarning("Storage > 4 MB — consider exporting a backup soon.");
+    }
+  }, [progress, notes, errors, reports, submissions, loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const flash = useCallback((m: string, f = 880) => { setToast(m); playBeep(f); setTimeout(() => setToast(""), 2200); }, []);
   const chgActW = useCallback((w: number) => { setActW(w); saveData("shikhar-active-week", w); flash(`Week ${w} active`, 660); }, [flash]);
@@ -1071,7 +1267,12 @@ export default function App() {
   const updNote = useCallback((k: string, t: string) => { setNotes(prev => { const u = { ...prev, [k]: t }; saveData("shikhar-notes", u); return u; }); }, []);
 
   const addError = useCallback((entry: Omit<ErrorEntry, "id" | "date" | "resolved">) => {
-    setErrors(prev => { const u = [{ ...entry, id: `err-${Date.now()}`, date: new Date().toISOString(), resolved: false }, ...prev]; saveData("shikhar-errors", u); return u; });
+    setErrors(prev => {
+      const item: ErrorEntry = { ...entry, id: `err-${Date.now()}`, date: new Date().toISOString(), resolved: false };
+      const u = boundedAppend(prev, item, STORAGE_CAPS.errors, "front");
+      saveData("shikhar-errors", u);
+      return u;
+    });
     flash("Error logged", 550);
   }, [flash]);
 
@@ -1261,7 +1462,14 @@ export default function App() {
       const res = await generateDailyReport(input);
       if (res.ok) {
         setReports(prev => {
-          const u = { ...prev, [date]: { text: res.text, generatedAt: new Date().toISOString() } };
+          const merged = { ...prev, [date]: { text: res.text, generatedAt: new Date().toISOString() } };
+          // Cap to STORAGE_CAPS.reports newest dates so the map can't grow unboundedly.
+          const dates = Object.keys(merged).sort().reverse();
+          let u: typeof merged = merged;
+          if (dates.length > STORAGE_CAPS.reports) {
+            u = {};
+            for (const d of dates.slice(0, STORAGE_CAPS.reports)) u[d] = merged[d];
+          }
           saveData("shikhar-reports", u);
           return u;
         });
@@ -1332,12 +1540,29 @@ export default function App() {
       ? subtopics.map(s => `• ${s}`).join("\n")
       : `• ${t.topic}`;
     const q = `Please explain the following ${subjLabel} sub-topics from chapter "${t.chapterName}" (CBSE Class 12), where Shikhar is weak. For each one give the core concept in simple terms, the key formula(s), one fully worked example, and one common mistake to avoid.\n\n${list}`;
-    setDoubtQ(q);
-    setDoubtImg(null);
-    setDoubtPreview("");
-    setDoubtAns("");
+    // Switch to (or create) the per-task thread so prior conversations
+    // about this exact task auto-restore.
+    const key = t.id;
+    const label = `${subjLabel} – ${t.chapterName}`;
+    setActiveDoubtKey(key);
+    setDoubtThreads(prev => {
+      if (prev[key]) return prev; // resume existing thread untouched
+      const u: Record<string, DoubtThread> = {
+        ...prev,
+        [key]: { id: key, label, messages: [], updatedAt: new Date().toISOString() },
+      };
+      saveData("shikhar-doubt-threads", threadsForStorage(u));
+      return u;
+    });
+    // Pre-fill the composer only if this is a brand-new thread (no prior
+    // messages), so resuming an existing thread doesn't clobber its history.
+    const isNewThread = !doubtThreads[key];
+    if (isNewThread) {
+      setDoubtQ(q);
+      setDoubtImg(null);
+      setDoubtPreview("");
+    }
     setDoubtErr("");
-    setDoubtChat([]);
     setDoubtReply("");
     setDoubtReplyImg(null);
     setDoubtReplyPreview("");
@@ -2766,7 +2991,8 @@ export default function App() {
       improvement: res.data.improvement,
     };
     setSubmissions(prev => {
-      const u = [...prev, sub];
+      // Keep at most STORAGE_CAPS.submissions newest entries (sorted by submittedAt).
+      const u = boundedAppend(prev, sub, STORAGE_CAPS.submissions, "back");
       saveData("shikhar-submissions", u);
       return u;
     });
@@ -2790,7 +3016,11 @@ export default function App() {
       }));
     if (newErrors.length > 0) {
       setErrors(prev => {
-        const u = [...newErrors, ...prev];
+        // Prepend each new error and cap so the journal never grows unbounded.
+        let u = prev;
+        for (let i = newErrors.length - 1; i >= 0; i--) {
+          u = boundedAppend(u, newErrors[i], STORAGE_CAPS.errors, "front");
+        }
         saveData("shikhar-errors", u);
         return u;
       });
@@ -2823,52 +3053,124 @@ export default function App() {
     setDoubtReplyPreview(`data:${blk.source.media_type};base64,${blk.source.data}`);
   };
 
-  const runDoubt = async () => {
-    if (!doubtQ.trim() && !doubtImg) { setDoubtErr("Enter a question or attach a photo"); return; }
-    setDoubtSolving(true); setDoubtAns(""); setDoubtErr("");
-    const res = await solveDoubt(doubtQ, doubtImg || undefined);
+  // Append a chunk of streamed text to the LAST assistant message in the
+  // active doubt thread. Used as the onDelta callback for streamDoubt().
+  // Persists to localStorage on every chunk via the setDoubtThreads writer
+  // — that's cheap because messagesForStorage strips images.
+  const appendStreamChunk = useCallback((chunk: string) => {
+    setDoubtThreads(prev => {
+      const cur = prev[activeDoubtKey];
+      if (!cur || cur.messages.length === 0) return prev;
+      const lastIdx = cur.messages.length - 1;
+      const last = cur.messages[lastIdx];
+      if (last.role !== "assistant") return prev;
+      const newText = (typeof last.content === "string" ? last.content : "") + chunk;
+      const newMessages = [...cur.messages];
+      newMessages[lastIdx] = { role: "assistant", content: newText };
+      const u: Record<string, DoubtThread> = {
+        ...prev,
+        [activeDoubtKey]: { ...cur, messages: newMessages, updatedAt: new Date().toISOString() },
+      };
+      // Don't persist on every token — too chatty. Only on the first chunk
+      // (so a refresh mid-stream still recovers something) and then every
+      // ~250 chars worth of new text.
+      if (newText.length < 80 || newText.length % 250 < chunk.length) {
+        saveData("shikhar-doubt-threads", threadsForStorage(u));
+      }
+      return u;
+    });
+  }, [activeDoubtKey]);
+
+  // Run a streaming doubt with the given user message + history. Pushes the
+  // user msg + an empty assistant placeholder, opens the stream, fills the
+  // placeholder via appendStreamChunk, and persists the final state.
+  const runStreamingDoubt = async (userContent: ContentBlock[], priorHistory: ClaudeMessage[]) => {
+    setDoubtErr("");
+    const userMsg: ClaudeMessage = { role: "user", content: userContent };
+    // Push user msg + empty assistant placeholder atomically.
+    setDoubtThreads(prev => {
+      const cur = prev[activeDoubtKey];
+      const label = cur?.label || (activeDoubtKey === "general" ? "General doubts" : "Task doubt");
+      const messages: ClaudeMessage[] = [
+        ...(cur?.messages || []),
+        userMsg,
+        { role: "assistant", content: "" },
+      ];
+      const u: Record<string, DoubtThread> = {
+        ...prev,
+        [activeDoubtKey]: { id: activeDoubtKey, label, messages, updatedAt: new Date().toISOString() },
+      };
+      saveData("shikhar-doubt-threads", threadsForStorage(u));
+      return u;
+    });
+
+    const ac = new AbortController();
+    doubtAbortRef.current = ac;
+    setDoubtSolving(true);
+    const res = await streamDoubt([...priorHistory, userMsg], ac.signal, appendStreamChunk);
     setDoubtSolving(false);
-    if (res.ok) {
-      setDoubtAns(res.text);
-      // Seed the conversation history so the user can reply to follow-ups.
-      const userContent: ContentBlock[] = [{ type: "text", text: doubtQ || "Solve the problem in the image." }];
-      if (doubtImg) userContent.push(doubtImg);
-      setDoubtChat([
-        { role: "user", content: userContent },
-        { role: "assistant", content: res.text },
-      ]);
-    } else {
-      setDoubtErr(res.error);
+    doubtAbortRef.current = null;
+
+    // Persist the final state once more (in case the throttled persistence
+    // missed the tail of the stream).
+    setDoubtThreads(prev => {
+      saveData("shikhar-doubt-threads", threadsForStorage(prev));
+      return prev;
+    });
+
+    if (!res.ok) {
+      if (res.error === "aborted") {
+        // User tapped Stop — leave whatever has streamed so far visible.
+        // Append a small italic marker so they know it was cut short.
+        setDoubtThreads(prev => {
+          const cur = prev[activeDoubtKey];
+          if (!cur || cur.messages.length === 0) return prev;
+          const lastIdx = cur.messages.length - 1;
+          const last = cur.messages[lastIdx];
+          if (last.role !== "assistant") return prev;
+          const txt = (typeof last.content === "string" ? last.content : "") + "\n\n[stopped]";
+          const newMessages = [...cur.messages];
+          newMessages[lastIdx] = { role: "assistant", content: txt };
+          const u: Record<string, DoubtThread> = { ...prev, [activeDoubtKey]: { ...cur, messages: newMessages } };
+          saveData("shikhar-doubt-threads", threadsForStorage(u));
+          return u;
+        });
+      } else {
+        setDoubtErr(res.error);
+      }
     }
   };
 
+  const runDoubt = async () => {
+    if (!doubtQ.trim() && !doubtImg) { setDoubtErr("Enter a question or attach a photo"); return; }
+    setDoubtAns("");
+    const userContent: ContentBlock[] = [{ type: "text", text: doubtQ || "Solve the problem in the image." }];
+    if (doubtImg) userContent.push(doubtImg);
+    // Clear the composer immediately so it's obvious the question was submitted.
+    setDoubtQ("");
+    setDoubtImg(null);
+    setDoubtPreview("");
+    await runStreamingDoubt(userContent, doubtChat);
+  };
+
   // Send a follow-up message in the doubt chat. Appends the user's reply to
-  // the running history, calls Claude with the full thread, then appends the
-  // assistant's response. The original question / answer stay visible above.
+  // the running history, streams Claude's response into the next bubble.
   const sendDoubtReply = async () => {
     if (!doubtReply.trim() && !doubtReplyImg) {
       setDoubtErr("Type a follow-up or attach a photo");
       return;
     }
-    setDoubtErr("");
     const userContent: ContentBlock[] = [{ type: "text", text: doubtReply || "(see attached image)" }];
     if (doubtReplyImg) userContent.push(doubtReplyImg);
-    const newUserMsg: ClaudeMessage = { role: "user", content: userContent };
-    const nextHistory = [...doubtChat, newUserMsg];
-    // Optimistically show the user message immediately.
-    setDoubtChat(nextHistory);
     setDoubtReply("");
     setDoubtReplyImg(null);
     setDoubtReplyPreview("");
-    setDoubtSolving(true);
-    const res = await continueDoubt(nextHistory);
-    setDoubtSolving(false);
-    if (res.ok) {
-      setDoubtChat([...nextHistory, { role: "assistant", content: res.text }]);
-      setDoubtAns(res.text); // keep the latest answer in the legacy field too
-    } else {
-      setDoubtErr(res.error);
-    }
+    await runStreamingDoubt(userContent, doubtChat);
+  };
+
+  // Cancel the in-flight streaming doubt call (if any).
+  const stopDoubt = () => {
+    try { doubtAbortRef.current?.abort(); } catch { /* noop */ }
   };
 
   // NOT a React component — a plain JSX-returning function. If we make it a
@@ -2914,7 +3216,16 @@ export default function App() {
         setDoubtPreview("");
         setDoubtAns("");
         setDoubtErr("");
-        setDoubtChat([]);
+        // Delete the active thread entirely (rather than leaving an empty
+        // entry) so the thread switcher pill list stays tidy. Then reset
+        // back to the general bucket.
+        setDoubtThreads(prev => {
+          const u = { ...prev };
+          delete u[activeDoubtKey];
+          saveData("shikhar-doubt-threads", threadsForStorage(u));
+          return u;
+        });
+        setActiveDoubtKey("general");
         setDoubtReply("");
         setDoubtReplyImg(null);
         setDoubtReplyPreview("");
@@ -3116,6 +3427,48 @@ export default function App() {
         {/* ===== DOUBT SOLVER TAB ===== */}
         {tab === "doubt" && (
           <>
+            {/* Thread switcher — horizontally scrollable strip of recent
+                conversations. Tap a pill to resume that thread; tap "+ New"
+                to drop back to the general bucket. */}
+            {(() => {
+              const recent = Object.values(doubtThreads)
+                .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""))
+                .slice(0, 8);
+              if (recent.length === 0 && activeDoubtKey === "general") return null;
+              return (
+                <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 4, marginBottom: 4 }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveDoubtKey("general");
+                      setDoubtQ(""); setDoubtImg(null); setDoubtPreview("");
+                      setDoubtReply(""); setDoubtReplyImg(null); setDoubtReplyPreview("");
+                      setDoubtErr("");
+                    }}
+                    className={`flex-shrink-0 text-[11px] font-bold px-3 py-1.5 rounded-full border transition-all active:scale-95 ${activeDoubtKey === "general" ? "bg-brand-600 text-white border-brand-600" : "bg-white text-gray-600 border-gray-200"}`}
+                  >
+                    + New
+                  </button>
+                  {recent.map(t => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => {
+                        setActiveDoubtKey(t.id);
+                        setDoubtQ(""); setDoubtImg(null); setDoubtPreview("");
+                        setDoubtReply(""); setDoubtReplyImg(null); setDoubtReplyPreview("");
+                        setDoubtErr("");
+                      }}
+                      className={`flex-shrink-0 text-[11px] font-semibold px-3 py-1.5 rounded-full border max-w-[180px] truncate transition-all active:scale-95 ${activeDoubtKey === t.id ? "bg-brand-600 text-white border-brand-600" : "bg-white text-gray-600 border-gray-200"}`}
+                      title={t.label}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
+
             {/* Initial-question card — only shown until the first answer arrives.
                 After that the conversation lives in the chat thread below. */}
             {doubtChat.length === 0 && (
@@ -3215,10 +3568,17 @@ export default function App() {
                     );
                   })}
                   {solving && (
-                    <div className="flex justify-start">
+                    <div className="flex justify-start items-center gap-2">
                       <div className="bg-gray-50 border border-gray-100 rounded-2xl px-3 py-2">
                         <p className="text-[12px] text-gray-400 italic">Claude is typing…</p>
                       </div>
+                      <button
+                        type="button"
+                        onClick={stopDoubt}
+                        className="text-[11px] font-bold text-white bg-red-500 px-3 py-1.5 rounded-full active:scale-95 hover:bg-red-600 transition-all"
+                      >
+                        ■ Stop
+                      </button>
                     </div>
                   )}
                 </div>
@@ -3428,6 +3788,39 @@ export default function App() {
       {!isOnline && (
         <div style={{ flexShrink: 0, background: "#f59e0b", zIndex: 18 }} className="px-4 py-2 flex items-center justify-center gap-2">
           <span className="text-[13px] font-semibold text-white">You're offline — app works, data is saved locally</span>
+        </div>
+      )}
+
+      {/* Storage warning banner — appears when usage exceeds 4 MB or saveData
+          had to recover from a quota error. Tap → byte breakdown by key. */}
+      {storageWarning && (
+        <div style={{ flexShrink: 0, background: "#f59e0b", zIndex: 18 }} className="px-4 py-2 flex items-center justify-between gap-2">
+          <span className="text-[13px] font-semibold text-white">⚠️ {storageWarning}</span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                // Per-key byte breakdown so Shweta can see what's eating space.
+                const lines: string[] = [];
+                let total = 0;
+                try {
+                  for (let i = 0; i < localStorage.length; i++) {
+                    const k = localStorage.key(i);
+                    if (!k || !k.startsWith("shikhar-")) continue;
+                    const v = localStorage.getItem(k) || "";
+                    const bytes = (k.length + v.length) * 2;
+                    total += bytes;
+                    lines.push(`${k}: ${(bytes / 1024).toFixed(1)} KB`);
+                  }
+                } catch { /* noop */ }
+                lines.sort();
+                alert(`Storage usage (~${(total / 1024 / 1024).toFixed(2)} MB)\n\n` + lines.join("\n"));
+              }}
+              className="bg-white text-amber-600 text-[12px] font-bold px-3 py-1 rounded-lg active:scale-95"
+            >
+              Details
+            </button>
+            <button onClick={() => setStorageWarning("")} aria-label="Dismiss" className="text-white text-[16px] font-bold px-2 py-0.5 active:scale-90">{"\u00D7"}</button>
+          </div>
         </div>
       )}
 

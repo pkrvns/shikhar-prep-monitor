@@ -299,6 +299,118 @@ You MUST therefore:
   Answer: v = 25 m/s
   ═══════════════════`;
 
+// ---------- Streaming helpers ----------
+//
+// Streaming makes the doubt feature feel ~10x faster: tokens appear in the
+// bubble as Anthropic emits them instead of after a full 5–30 s wait. We
+// reuse the same /api/claude proxy by passing { stream: true } in the body
+// — the proxy forwards Anthropic's SSE bytes verbatim, and we parse them
+// here in the browser.
+//
+// Anthropic SSE event format:
+//   event: content_block_delta
+//   data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}
+//
+// We only care about content_block_delta → text_delta events for plain text.
+
+export async function streamClaude(opts: {
+  messages: ClaudeMessage[];
+  system?: string;
+  max_tokens?: number;
+  model?: string;
+  signal?: AbortSignal;
+  onDelta: (chunk: string) => void;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  let r: Response;
+  try {
+    r = await fetch("/api/claude", {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "text/event-stream" },
+      cache: "no-store",
+      signal: opts.signal,
+      body: JSON.stringify({
+        model: opts.model || CLAUDE_MODEL,
+        max_tokens: opts.max_tokens || 2048,
+        system: opts.system,
+        messages: opts.messages,
+        stream: true,
+      }),
+    });
+  } catch (e) {
+    if ((e as Error)?.name === "AbortError") return { ok: false, error: "aborted" };
+    return { ok: false, error: "Network error: " + (e instanceof Error ? e.message : String(e)) };
+  }
+
+  if (!r.ok || !r.body) {
+    // Server returned an error JSON (or no body) — read it as text and surface.
+    let errText = "";
+    try { errText = await r.text(); } catch { /* noop */ }
+    let parsed: { error?: { message?: string } } | null = null;
+    try { parsed = JSON.parse(errText); } catch { /* not JSON */ }
+    return { ok: false, error: parsed?.error?.message || `HTTP ${r.status} — ${errText.slice(0, 200) || "no body"}` };
+  }
+
+  const reader = r.body.getReader();
+  const decoder = new TextDecoder("utf-8");
+  let buffer = "";
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      // SSE events are separated by blank lines.
+      let nlIdx;
+      while ((nlIdx = buffer.indexOf("\n\n")) !== -1) {
+        const rawEvent = buffer.slice(0, nlIdx);
+        buffer = buffer.slice(nlIdx + 2);
+        // Each event is a series of `field: value` lines. We only need data:.
+        const dataLines: string[] = [];
+        for (const line of rawEvent.split("\n")) {
+          if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
+        }
+        if (dataLines.length === 0) continue;
+        const dataStr = dataLines.join("\n");
+        if (dataStr === "[DONE]") return { ok: true };
+        try {
+          const evt = JSON.parse(dataStr) as {
+            type?: string;
+            delta?: { type?: string; text?: string };
+            error?: { message?: string };
+          };
+          if (evt.type === "content_block_delta" && evt.delta?.type === "text_delta" && evt.delta.text) {
+            opts.onDelta(evt.delta.text);
+          } else if (evt.type === "message_stop") {
+            return { ok: true };
+          } else if (evt.type === "error" && evt.error?.message) {
+            return { ok: false, error: evt.error.message };
+          }
+        } catch {
+          // Ignore unparseable events (keep-alives, etc.)
+        }
+      }
+    }
+  } catch (e) {
+    if ((e as Error)?.name === "AbortError") return { ok: false, error: "aborted" };
+    return { ok: false, error: "Stream read failed: " + (e instanceof Error ? e.message : String(e)) };
+  }
+  return { ok: true };
+}
+
+// Streaming variant of continueDoubt for the multi-turn doubt UI.
+export async function streamDoubt(
+  messages: ClaudeMessage[],
+  signal: AbortSignal,
+  onDelta: (chunk: string) => void,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  return streamClaude({
+    system: DOUBT_SYSTEM_PROMPT,
+    max_tokens: 2000,
+    messages,
+    signal,
+    onDelta,
+  });
+}
+
 // Multi-turn doubt chat. Pass the full prior message history (alternating
 // user / assistant) plus the new user message inside the array. The same
 // formatting rules from DOUBT_SYSTEM_PROMPT apply.
