@@ -3741,8 +3741,8 @@ export default function App() {
                   src="/shweta.jpg"
                   size={36}
                   fallbackBg="from-pink-400 to-rose-500"
-                  imgScale={2.2}
-                  imgPosition="center 20%"
+                  imgScale={1}
+                  imgPosition="center center"
                   style={{ border: "2px solid #fff" }}
                 />
                 <Avatar
@@ -3750,8 +3750,8 @@ export default function App() {
                   src="/shikhar.jpg"
                   size={36}
                   fallbackBg="from-brand-500 to-brand-700"
-                  imgScale={2.2}
-                  imgPosition="center 20%"
+                  imgScale={1}
+                  imgPosition="center center"
                   style={{ border: "2px solid #fff" }}
                 />
               </div>
