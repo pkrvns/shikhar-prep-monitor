@@ -13,7 +13,6 @@
 // Claude responses we're sending.
 
 import type { IncomingMessage, ServerResponse } from "http";
-import { Readable } from "stream";
 
 export const config = {
   // 12 MB body cap covers ~3 photos at 3-4 MB each.
@@ -138,15 +137,25 @@ export default async function handler(
     res.setHeader("x-accel-buffering", "no");
     res.setHeader("connection", "keep-alive");
     try {
-      // Convert the Web ReadableStream from fetch into a Node Readable so
-      // we can pipe it to the response. Works on Node 18+ (Vercel runtime).
-      const nodeStream = Readable.fromWeb(upstream.body as unknown as Parameters<typeof Readable.fromWeb>[0]);
-      nodeStream.on("error", (err: Error) => {
-        try { res.end(); } catch { /* noop */ }
+      // Read from the Web ReadableStream and write chunks directly to res.
+      // Avoids importing Node's stream module which Vercel's ncc bundler
+      // cannot resolve, causing FUNCTION_INVOCATION_FAILED at module load.
+      const reader = (upstream.body as ReadableStream<Uint8Array>).getReader();
+      const pump = async () => {
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          res.write(value);
+        }
+        res.end();
+        clearTimeout(upstreamTimeout);
+      };
+      pump().catch((err) => {
         console.error("stream error:", err);
+        try { res.end(); } catch { /* noop */ }
+        clearTimeout(upstreamTimeout);
       });
-      nodeStream.pipe(res);
-      nodeStream.on("end", () => clearTimeout(upstreamTimeout));
     } catch (e) {
       clearTimeout(upstreamTimeout);
       sendJson(res, 502, { error: { type: "stream_pipe_failed", message: e instanceof Error ? e.message : String(e) } });
