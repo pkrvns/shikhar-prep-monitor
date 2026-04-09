@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRegisterSW } from "virtual:pwa-register/react";
 import { SYLLABUS_LINKS, SAMPLE_PAPERS, PYQ_LINKS, GENERAL_RESOURCES, FORMULAS, PYQ_PRIORITIES, TEST_PAPERS, TAG_COLORS, type LinkSection } from "./data";
-import { analyzeWork, streamDoubt, generateDailyReport, suggestErrorFix, fileToImageBlock, type ImageBlock, type AnalyzeWorkResult, type PriorAttemptCtx, type ClaudeMessage, type ContentBlock } from "./claude";
+import { analyzeWork, continueDoubt, generateDailyReport, suggestErrorFix, fileToImageBlock, type ImageBlock, type AnalyzeWorkResult, type PriorAttemptCtx, type ClaudeMessage, type ContentBlock } from "./claude";
 // jsPDF is ~50 KB gzipped — only loaded the first time the user taps
 // "Save as PDF" so it never blocks the initial app boot.
 const loadJsPDF = () => import("jspdf").then(m => m.jsPDF);
@@ -3087,18 +3087,17 @@ export default function App() {
 
   // Run a streaming doubt with the given user message + history. Pushes the
   // user msg + an empty assistant placeholder, opens the stream, fills the
-  // placeholder via appendStreamChunk, and persists the final state.
+  // Sends a doubt to Claude (non-streaming) and persists the thread.
   const runStreamingDoubt = async (userContent: ContentBlock[], priorHistory: ClaudeMessage[]) => {
     setDoubtErr("");
     const userMsg: ClaudeMessage = { role: "user", content: userContent };
-    // Push user msg + empty assistant placeholder atomically.
+    // Push user msg immediately so the UI shows it.
     setDoubtThreads(prev => {
       const cur = prev[activeDoubtKey];
       const label = cur?.label || (activeDoubtKey === "general" ? "General doubts" : "Task doubt");
       const messages: ClaudeMessage[] = [
         ...(cur?.messages || []),
         userMsg,
-        { role: "assistant", content: "" },
       ];
       const u: Record<string, DoubtThread> = {
         ...prev,
@@ -3108,41 +3107,30 @@ export default function App() {
       return u;
     });
 
-    const ac = new AbortController();
-    doubtAbortRef.current = ac;
     setDoubtSolving(true);
-    const res = await streamDoubt([...priorHistory, userMsg], ac.signal, appendStreamChunk);
+    const res = await continueDoubt([...priorHistory, userMsg]);
     setDoubtSolving(false);
-    doubtAbortRef.current = null;
-
-    // Persist the final state once more (in case the throttled persistence
-    // missed the tail of the stream).
-    setDoubtThreads(prev => {
-      saveData("shikhar-doubt-threads", threadsForStorage(prev));
-      return prev;
-    });
 
     if (!res.ok) {
-      if (res.error === "aborted") {
-        // User tapped Stop — leave whatever has streamed so far visible.
-        // Append a small italic marker so they know it was cut short.
-        setDoubtThreads(prev => {
-          const cur = prev[activeDoubtKey];
-          if (!cur || cur.messages.length === 0) return prev;
-          const lastIdx = cur.messages.length - 1;
-          const last = cur.messages[lastIdx];
-          if (last.role !== "assistant") return prev;
-          const txt = (typeof last.content === "string" ? last.content : "") + "\n\n[stopped]";
-          const newMessages = [...cur.messages];
-          newMessages[lastIdx] = { role: "assistant", content: txt };
-          const u: Record<string, DoubtThread> = { ...prev, [activeDoubtKey]: { ...cur, messages: newMessages } };
-          saveData("shikhar-doubt-threads", threadsForStorage(u));
-          return u;
-        });
-      } else {
-        setDoubtErr(res.error);
-      }
+      setDoubtErr(res.error);
+      return;
     }
+
+    // Push the assistant response into the thread and persist.
+    setDoubtThreads(prev => {
+      const cur = prev[activeDoubtKey];
+      if (!cur) return prev;
+      const messages: ClaudeMessage[] = [
+        ...cur.messages,
+        { role: "assistant", content: res.text },
+      ];
+      const u: Record<string, DoubtThread> = {
+        ...prev,
+        [activeDoubtKey]: { ...cur, messages, updatedAt: new Date().toISOString() },
+      };
+      saveData("shikhar-doubt-threads", threadsForStorage(u));
+      return u;
+    });
   };
 
   const runDoubt = async () => {

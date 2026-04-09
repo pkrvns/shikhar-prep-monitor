@@ -12,7 +12,7 @@
 // via the maxDuration export below — enough headroom for the slowest
 // Claude responses we're sending.
 
-import type { IncomingMessage, ServerResponse } from "http";
+import type { IncomingMessage, ServerResponse } from "node:http";
 
 export const config = {
   // 12 MB body cap covers ~3 photos at 3-4 MB each.
@@ -56,9 +56,9 @@ export default async function handler(
 
   // Vercel auto-parses JSON bodies for Node functions. If for any reason
   // it didn't (e.g. wrong content-type), parse manually from the raw stream.
-  let body: { model?: string; system?: string; messages?: unknown; max_tokens?: number; stream?: boolean } | null = null;
+  let body: { model?: string; system?: string; messages?: unknown; max_tokens?: number } | null = null;
   if (req.body && typeof req.body === "object") {
-    body = req.body as unknown as typeof body;
+    body = req.body as typeof body;
   } else {
     try {
       const raw = await readRawBody(req);
@@ -77,19 +77,8 @@ export default async function handler(
   // Defensive 60s wall on the upstream call. Vercel will already kill us at
   // maxDuration, but giving fetch its own AbortSignal lets us return a
   // friendlier error message before that happens.
-  //
-  // NOTE: we deliberately do NOT register a `req.on("close")` listener here
-  // to abort on client disconnect. Vercel's bodyParser fully consumes and
-  // ends the request stream before invoking this handler, so 'close' fires
-  // immediately on the next tick — which would abort the upstream fetch
-  // before it even starts and surface as HTTP 500. The 55 s timeout above
-  // plus maxDuration:60 already prevent runaway functions, and for the
-  // streaming path the response pipe naturally errors out when the client
-  // disconnects, so the listener was redundant anyway.
   const ac = new AbortController();
   const upstreamTimeout = setTimeout(() => ac.abort(), 55_000);
-
-  const wantStream = body.stream === true;
 
   let upstream: Response;
   try {
@@ -105,7 +94,6 @@ export default async function handler(
         max_tokens: body.max_tokens || DEFAULT_MAX_TOKENS,
         system: body.system,
         messages: body.messages,
-        stream: wantStream || undefined,
       }),
       signal: ac.signal,
     });
@@ -122,47 +110,6 @@ export default async function handler(
     });
     return;
   }
-
-  // ----- STREAMING PATH -----
-  // Anthropic returns its own SSE stream when stream:true. We forward those
-  // bytes verbatim — the client parses message_delta events and renders
-  // tokens as they arrive. No buffering on our side.
-  if (wantStream && upstream.body) {
-    res.statusCode = upstream.status;
-    res.setHeader("content-type", upstream.status === 200 ? "text/event-stream" : "application/json");
-    res.setHeader("cache-control", "no-store, no-transform");
-    res.setHeader("access-control-allow-origin", "*");
-    // x-accel-buffering: no disables Vercel/proxy response buffering so
-    // tokens actually arrive incrementally instead of in one big flush.
-    res.setHeader("x-accel-buffering", "no");
-    res.setHeader("connection", "keep-alive");
-    try {
-      // Read from the Web ReadableStream and write chunks directly to res.
-      // Avoids importing Node's stream module which Vercel's ncc bundler
-      // cannot resolve, causing FUNCTION_INVOCATION_FAILED at module load.
-      const reader = (upstream.body as ReadableStream<Uint8Array>).getReader();
-      const pump = async () => {
-        // eslint-disable-next-line no-constant-condition
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          res.write(value);
-        }
-        res.end();
-        clearTimeout(upstreamTimeout);
-      };
-      pump().catch((err) => {
-        console.error("stream error:", err);
-        try { res.end(); } catch { /* noop */ }
-        clearTimeout(upstreamTimeout);
-      });
-    } catch (e) {
-      clearTimeout(upstreamTimeout);
-      sendJson(res, 502, { error: { type: "stream_pipe_failed", message: e instanceof Error ? e.message : String(e) } });
-    }
-    return;
-  }
-
   clearTimeout(upstreamTimeout);
 
   const text = await upstream.text();
@@ -193,7 +140,7 @@ function readRawBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     let data = "";
     req.setEncoding("utf8");
-    req.on("data", (chunk: string) => { data += chunk; });
+    req.on("data", chunk => { data += chunk; });
     req.on("end", () => resolve(data));
     req.on("error", reject);
   });
