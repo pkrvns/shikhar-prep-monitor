@@ -12,6 +12,9 @@
 // not installed, and Vercel deploys the broken output anyway — producing
 // FUNCTION_INVOCATION_FAILED at runtime. Inline types sidestep the issue.
 
+// Declare process so we don't need @types/node.
+declare const process: { env: Record<string, string | undefined> };
+
 export const config = {
   // 12 MB body cap covers ~3 photos at 3-4 MB each.
   api: { bodyParser: { sizeLimit: "12mb" } },
@@ -62,7 +65,7 @@ export default async function handler(req: Req, res: Res): Promise<void> {
   // it didn't (e.g. wrong content-type), parse manually from the raw stream.
   let body: { model?: string; system?: string; messages?: unknown; max_tokens?: number } | null = null;
   if (req.body && typeof req.body === "object") {
-    body = req.body as typeof body;
+    body = req.body as unknown as typeof body;
   } else {
     try {
       const raw = await readRawBody(req);
