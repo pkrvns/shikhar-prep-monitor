@@ -12,8 +12,8 @@
 // via the maxDuration export below — enough headroom for the slowest
 // Claude responses we're sending.
 
-import type { IncomingMessage, ServerResponse } from "node:http";
-import { Readable } from "node:stream";
+import type { IncomingMessage, ServerResponse } from "http";
+import { Readable } from "stream";
 
 export const config = {
   // 12 MB body cap covers ~3 photos at 3-4 MB each.
