@@ -6,13 +6,11 @@
 // Client posts: { model?, system?, messages, max_tokens? }
 // Returns Anthropic JSON pass-through.
 //
-// Switched off the Edge runtime (which has a hard 25-second wall on Hobby
-// and was killing long multi-sub-topic doubt prompts with HTTP 504
-// FUNCTION_INVOCATION_TIMEOUT). Node runtime supports up to 60 s on Hobby
-// via the maxDuration export below — enough headroom for the slowest
-// Claude responses we're sending.
-
-import type { IncomingMessage, ServerResponse } from "node:http";
+// IMPORTANT: This file deliberately avoids importing ANY Node built-in modules
+// (including `import type`). Vercel's ncc bundler + TS compiler choke on
+// unresolved node: specifiers even for type-only imports when @types/node is
+// not installed, and Vercel deploys the broken output anyway — producing
+// FUNCTION_INVOCATION_FAILED at runtime. Inline types sidestep the issue.
 
 export const config = {
   // 12 MB body cap covers ~3 photos at 3-4 MB each.
@@ -23,14 +21,20 @@ export const maxDuration = 60;
 const DEFAULT_MODEL = "claude-opus-4-5";
 const DEFAULT_MAX_TOKENS = 2048;
 
-// Vercel Node functions inject a parsed `body` onto the request when the
-// content-type is JSON, but it's not in the standard IncomingMessage type.
-type VercelNodeRequest = IncomingMessage & { body?: unknown };
+// Minimal inline types so we never need `import type` from "http".
+interface Req {
+  method?: string;
+  body?: unknown;
+  setEncoding(enc: string): void;
+  on(event: string, cb: (...args: unknown[]) => void): void;
+}
+interface Res {
+  statusCode: number;
+  setHeader(name: string, value: string): void;
+  end(data?: string): void;
+}
 
-export default async function handler(
-  req: VercelNodeRequest,
-  res: ServerResponse,
-): Promise<void> {
+export default async function handler(req: Req, res: Res): Promise<void> {
   // CORS preflight
   if (req.method === "OPTIONS") {
     res.statusCode = 204;
@@ -74,8 +78,8 @@ export default async function handler(
     return;
   }
 
-  // Defensive 60s wall on the upstream call. Vercel will already kill us at
-  // maxDuration, but giving fetch its own AbortSignal lets us return a
+  // Defensive 55s wall on the upstream call. Vercel will already kill us at
+  // maxDuration (60s), but giving fetch its own AbortSignal lets us return a
   // friendlier error message before that happens.
   const ac = new AbortController();
   const upstreamTimeout = setTimeout(() => ac.abort(), 55_000);
@@ -97,9 +101,9 @@ export default async function handler(
       }),
       signal: ac.signal,
     });
-  } catch (e) {
+  } catch (e: unknown) {
     clearTimeout(upstreamTimeout);
-    const aborted = (e as Error)?.name === "AbortError";
+    const aborted = e instanceof Error && e.name === "AbortError";
     sendJson(res, 504, {
       error: {
         type: aborted ? "upstream_timeout" : "upstream_fetch_failed",
@@ -129,18 +133,18 @@ export default async function handler(
   res.end(payload);
 }
 
-function sendJson(res: ServerResponse, status: number, obj: unknown): void {
+function sendJson(res: Res, status: number, obj: unknown): void {
   res.statusCode = status;
   res.setHeader("content-type", "application/json");
   res.setHeader("access-control-allow-origin", "*");
   res.end(JSON.stringify(obj));
 }
 
-function readRawBody(req: IncomingMessage): Promise<string> {
+function readRawBody(req: Req): Promise<string> {
   return new Promise((resolve, reject) => {
     let data = "";
     req.setEncoding("utf8");
-    req.on("data", chunk => { data += chunk; });
+    req.on("data", (chunk: unknown) => { data += chunk; });
     req.on("end", () => resolve(data));
     req.on("error", reject);
   });
