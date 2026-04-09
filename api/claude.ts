@@ -59,7 +59,7 @@ export default async function handler(
   // it didn't (e.g. wrong content-type), parse manually from the raw stream.
   let body: { model?: string; system?: string; messages?: unknown; max_tokens?: number; stream?: boolean } | null = null;
   if (req.body && typeof req.body === "object") {
-    body = req.body as typeof body;
+    body = req.body as unknown as typeof body;
   } else {
     try {
       const raw = await readRawBody(req);
@@ -141,7 +141,7 @@ export default async function handler(
       // Convert the Web ReadableStream from fetch into a Node Readable so
       // we can pipe it to the response. Works on Node 18+ (Vercel runtime).
       const nodeStream = Readable.fromWeb(upstream.body as unknown as Parameters<typeof Readable.fromWeb>[0]);
-      nodeStream.on("error", (err) => {
+      nodeStream.on("error", (err: Error) => {
         try { res.end(); } catch { /* noop */ }
         console.error("stream error:", err);
       });
@@ -184,7 +184,7 @@ function readRawBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     let data = "";
     req.setEncoding("utf8");
-    req.on("data", chunk => { data += chunk; });
+    req.on("data", (chunk: string) => { data += chunk; });
     req.on("end", () => resolve(data));
     req.on("error", reject);
   });
