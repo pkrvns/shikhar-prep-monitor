@@ -1,6 +1,6 @@
 {
   "functions": {
-    "api/claude.ts": {
+    "api/claude.js": {
       "maxDuration": 60
     }
   }
