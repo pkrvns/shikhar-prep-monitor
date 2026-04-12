@@ -2,6 +2,12 @@
   "functions": {
     "api/claude.js": {
       "maxDuration": 60
+    },
+    "api/data-save.js": {
+      "maxDuration": 10
+    },
+    "api/data-load.js": {
+      "maxDuration": 10
     }
   }
 }

@@ -480,21 +480,50 @@ function saveData(key: string, data: unknown): boolean {
   const json = JSON.stringify(data);
   try {
     localStorage.setItem(key, json);
-    return true;
   } catch (e) {
     if (isQuotaError(e)) {
       try {
         pruneOldestEntries();
         localStorage.setItem(key, json);
         onQuotaWarning("Storage almost full — old entries pruned. Export a backup soon.");
-        return true;
       } catch (e2) {
         console.error("saveData retry failed:", key, e2);
       }
+    } else {
+      console.error("saveData failed:", key, e);
+      onQuotaWarning("Storage full — could not save. Export a backup and reset.");
     }
-    console.error("saveData failed:", key, e);
-    onQuotaWarning("Storage full — could not save. Export a backup and reset.");
-    return false;
+  }
+  // Fire-and-forget cloud sync
+  cloudSave(key, data);
+  return true;
+}
+
+// ---------- Cloud sync (Upstash Redis via API) ----------
+function cloudSave(key: string, data: unknown): void {
+  fetch("/api/data-save", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ key, value: data }),
+  }).catch(() => { /* offline or failed — localStorage still has it */ });
+}
+
+let _cloudSyncDone = false;
+async function cloudSyncAll(): Promise<void> {
+  if (_cloudSyncDone) return;
+  try {
+    const resp = await fetch("/api/data-load?all=1");
+    if (!resp.ok) return;
+    const { data } = await resp.json() as { ok: boolean; data: Record<string, unknown> };
+    if (!data || typeof data !== "object") return;
+    for (const [key, value] of Object.entries(data)) {
+      if (value !== null && value !== undefined) {
+        localStorage.setItem(key, JSON.stringify(value));
+      }
+    }
+    _cloudSyncDone = true;
+  } catch {
+    // Offline or API not yet deployed — no-op, use localStorage
   }
 }
 
@@ -1207,25 +1236,32 @@ export default function App() {
     // Wire the module-level quota callback to React state so saveData() can
     // surface a warning without importing anything.
     onQuotaWarning = (msg: string) => setStorageWarning(msg);
-    setProgress(loadData("shikhar-progress", {}));
-    setNotes(loadData("shikhar-notes", {}));
-    // Always derive active week from today's real calendar — never trust stale localStorage value.
-    const realW = realWeekFromToday();
-    setActW(realW); setSelW(realW);
-    saveData("shikhar-active-week", realW);
-    setErrors(loadData("shikhar-errors", []));
-    setReports(loadData("shikhar-reports", {}));
-    setSubmissions(loadData("shikhar-submissions", []));
-    setDoubtThreads(loadData<Record<string, DoubtThread>>("shikhar-doubt-threads", {}));
-    // Default checkDate to today (local YYYY-MM-DD)
-    const now = new Date();
-    const iso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-    setCheckDate(iso);
-    // Initial storage estimate so the badge shows on cold-start if needed.
-    if (estimateStorageBytes() > 4 * 1024 * 1024) {
-      setStorageWarning("Storage > 4 MB — consider exporting a backup soon.");
-    }
-    setLoading(false);
+
+    // Hydrate from cloud first (merges into localStorage), then load state.
+    const hydrate = () => {
+      setProgress(loadData("shikhar-progress", {}));
+      setNotes(loadData("shikhar-notes", {}));
+      // Always derive active week from today's real calendar — never trust stale localStorage value.
+      const realW = realWeekFromToday();
+      setActW(realW); setSelW(realW);
+      saveData("shikhar-active-week", realW);
+      setErrors(loadData("shikhar-errors", []));
+      setReports(loadData("shikhar-reports", {}));
+      setSubmissions(loadData("shikhar-submissions", []));
+      setDoubtThreads(loadData<Record<string, DoubtThread>>("shikhar-doubt-threads", {}));
+      // Default checkDate to today (local YYYY-MM-DD)
+      const now = new Date();
+      const iso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+      setCheckDate(iso);
+      if (estimateStorageBytes() > 4 * 1024 * 1024) {
+        setStorageWarning("Storage > 4 MB — consider exporting a backup soon.");
+      }
+      setLoading(false);
+    };
+
+    // Try cloud sync first, then hydrate. If offline/slow, hydrate from localStorage immediately.
+    cloudSyncAll().then(hydrate).catch(hydrate);
+
     return () => { onQuotaWarning = () => {}; };
   }, []);
 
@@ -2800,8 +2836,8 @@ export default function App() {
     const scoreKey = `eval-w${selWeek}-${selSubj}`;
 
     useEffect(() => {
-      const stored = localStorage.getItem(scoreKey);
-      if (stored) { setScores(JSON.parse(stored)); setSaved(true); } else { setScores({}); setSaved(false); }
+      const stored = loadData<Record<string, number>>(scoreKey, {});
+      if (Object.keys(stored).length > 0) { setScores(stored); setSaved(true); } else { setScores({}); setSaved(false); }
     }, [scoreKey]);
 
     const totalScored = Object.values(scores).reduce((a, b) => a + b, 0);
@@ -2809,7 +2845,7 @@ export default function App() {
     const pct = totalMax > 0 ? Math.round((totalScored / totalMax) * 100) : 0;
 
     const saveEval = () => {
-      localStorage.setItem(scoreKey, JSON.stringify(scores));
+      saveData(scoreKey, scores);
       setSaved(true);
       flash("Evaluation saved", 880);
     };
