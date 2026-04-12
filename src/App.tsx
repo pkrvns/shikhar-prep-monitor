@@ -3378,7 +3378,7 @@ export default function App() {
                 {submissionsForCurrent.length > 0 ? `Upload Re-Attempt #${submissionsForCurrent.length + 1}` : "Upload Shikhar\u2019s Solved Work"}
               </p>
               <label className="block w-full border-2 border-dashed border-gray-200 rounded-xl py-6 text-center cursor-pointer hover:border-brand-300 hover:bg-brand-50/30 transition-all">
-                <input type="file" accept="image/*" multiple capture="environment" onChange={e => onPickFiles(e.target.files)} className="hidden" />
+                <input type="file" accept="image/*" multiple onChange={e => onPickFiles(e.target.files)} className="hidden" />
                 <p className="text-[14px] text-gray-500 font-semibold">📷 Tap to take or choose photo(s)</p>
                 <p className="text-[12px] text-gray-400 mt-1">Up to 4 photos &middot; auto-resized</p>
               </label>
