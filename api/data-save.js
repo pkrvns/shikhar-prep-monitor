@@ -53,16 +53,20 @@ module.exports = async function handler(req, res) {
     return;
   }
 
-  // Save to Upstash via REST API (SET key value)
+  // Save to Upstash via REST API (SET key value).
+  // We store the JSON-serialised value as a Redis string. Upstash's /set/{key}
+  // endpoint uses the request body verbatim as the value — so we send the
+  // JSON string once. (Double-stringifying was the old bug: arrays/objects
+  // would round-trip back as stringified JSON, crashing .filter() callers.)
   const payload = JSON.stringify(body.value);
   try {
     const resp = await fetch(`${url}/set/${encodeURIComponent(body.key)}`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
+        "Content-Type": "text/plain",
       },
-      body: JSON.stringify(payload),
+      body: payload,
     });
     const result = await resp.json();
     res.statusCode = 200;

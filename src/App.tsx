@@ -401,7 +401,27 @@ function realWeekFromToday(): number {
 }
 
 function loadData<T>(key: string, fallback: T): T {
-  try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; } catch { return fallback; }
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    let parsed: unknown = JSON.parse(raw);
+    // Self-heal legacy double-encoded cloud values: if the first parse gave
+    // us a string but we expected an object/array, JSON.parse once more.
+    // Without this, a single poisoned key (submissions, errors, etc.) would
+    // crash the entire app on mount when code called .filter() / .map() on
+    // the resulting string.
+    if (typeof parsed === "string" && typeof fallback === "object" && fallback !== null) {
+      try { parsed = JSON.parse(parsed); } catch { /* leave as string — rejected below */ }
+    }
+    // Last-resort type guard: if the stored shape is incompatible with the
+    // caller's fallback (array vs object vs primitive), refuse to hydrate
+    // with garbage and return the safe default instead.
+    if (Array.isArray(fallback) && !Array.isArray(parsed)) return fallback;
+    if (!Array.isArray(fallback) && typeof fallback === "object" && fallback !== null) {
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return fallback;
+    }
+    return parsed as T;
+  } catch { return fallback; }
 }
 
 // ---------- Storage quota guard ----------

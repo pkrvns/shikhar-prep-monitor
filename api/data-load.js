@@ -58,7 +58,7 @@ module.exports = async function handler(req, res) {
       const values = mgetResult.result || [];
       for (let i = 0; i < keys.length; i++) {
         if (values[i] !== null && values[i] !== undefined) {
-          try { data[keys[i]] = JSON.parse(values[i]); } catch { data[keys[i]] = values[i]; }
+          data[keys[i]] = decodeStoredValue(values[i]);
         }
       }
       res.statusCode = 200;
@@ -71,7 +71,7 @@ module.exports = async function handler(req, res) {
       const result = await resp.json();
       let value = null;
       if (result.result !== null && result.result !== undefined) {
-        try { value = JSON.parse(result.result); } catch { value = result.result; }
+        value = decodeStoredValue(result.result);
       }
       res.statusCode = 200;
       res.setHeader("content-type", "application/json");
@@ -90,3 +90,21 @@ module.exports = async function handler(req, res) {
     res.end(JSON.stringify({ error: "upstash_error", message: e instanceof Error ? e.message : "unknown" }));
   }
 };
+
+// Decode a value pulled from Upstash. New writes are single-JSON-encoded
+// (e.g. the string `"[1,2,3]"` for the array [1,2,3]), but older writes were
+// double-encoded (e.g. `"\"[1,2,3]\""`) which JSON.parse only peels once,
+// leaving a bare JSON-looking string. If the first parse yields a string
+// that itself looks like JSON, peel a second time — this auto-heals any
+// legacy corrupt values the moment the client syncs.
+function decodeStoredValue(raw) {
+  let value;
+  try { value = JSON.parse(raw); } catch { return raw; }
+  if (typeof value === "string") {
+    const s = value.trimStart();
+    if (s.startsWith("{") || s.startsWith("[") || s === "null" || s === "true" || s === "false" || /^-?\d/.test(s)) {
+      try { value = JSON.parse(value); } catch { /* leave as string */ }
+    }
+  }
+  return value;
+}
