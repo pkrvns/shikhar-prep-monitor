@@ -1543,13 +1543,19 @@ export default function App() {
   }, [buildReportInput, fmtTodayISO, flash]);
 
   // Auto-generate report on app open if it's >= 21:00 IST and today's report is missing.
+  // IMPORTANT: we also stamp a "last attempted" marker in localStorage the moment we
+  // fire, so that if the PWA gets killed/reloaded (iOS background eviction, SW
+  // autoUpdate, manual refresh) before the cloud save propagates, the next mount
+  // won't re-fire the report and spam toasts. On Shweta's phone this loop was
+  // regenerating the daily report on every app reopen.
   useEffect(() => {
     if (loading) return;
     const todayISO = fmtTodayISO();
     if (reports[todayISO]) return;
+    if (loadData("shikhar-report-attempted", "") === todayISO) return;
     const now = new Date();
     if (now.getHours() < 21) return; // wait until 9 PM
-    // Fire and forget
+    saveData("shikhar-report-attempted", todayISO); // stamp BEFORE firing
     runDailyReport(todayISO);
   }, [loading, reports, runDailyReport, fmtTodayISO]);
 
