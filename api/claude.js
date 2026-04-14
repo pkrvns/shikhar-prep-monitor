@@ -49,9 +49,17 @@ module.exports = async function handler(req, res) {
 
   const DEFAULT_MODEL = "claude-opus-4-5";
   const DEFAULT_MAX_TOKENS = 2048;
+  const wantStream = body.stream === true;
 
   const ac = new AbortController();
-  const upstreamTimeout = setTimeout(() => ac.abort(), 55000);
+  // For streaming we must NOT auto-abort at 55s — streams often last longer.
+  // Vercel's function maxDuration (60s) will bound it. For non-streaming we
+  // keep the 55s safety net so the client gets a clean error instead of a
+  // mystery 504 from the platform.
+  const upstreamTimeout = wantStream ? null : setTimeout(() => ac.abort(), 55000);
+
+  // Kill the upstream request if the client disconnects mid-stream.
+  req.on("close", () => { try { ac.abort(); } catch { /* noop */ } });
 
   let upstream;
   try {
@@ -61,17 +69,19 @@ module.exports = async function handler(req, res) {
         "content-type": "application/json",
         "x-api-key": apiKey,
         "anthropic-version": "2023-06-01",
+        ...(wantStream ? { accept: "text/event-stream" } : {}),
       },
       body: JSON.stringify({
         model: body.model || DEFAULT_MODEL,
         max_tokens: body.max_tokens || DEFAULT_MAX_TOKENS,
         system: body.system,
         messages: body.messages,
+        ...(wantStream ? { stream: true } : {}),
       }),
       signal: ac.signal,
     });
   } catch (e) {
-    clearTimeout(upstreamTimeout);
+    if (upstreamTimeout) clearTimeout(upstreamTimeout);
     const aborted = e && e.name === "AbortError";
     sendJson(res, 504, {
       error: {
@@ -83,8 +93,45 @@ module.exports = async function handler(req, res) {
     });
     return;
   }
-  clearTimeout(upstreamTimeout);
+  if (upstreamTimeout) clearTimeout(upstreamTimeout);
 
+  // ---- Streaming branch: forward Anthropic's SSE bytes verbatim ----
+  if (wantStream) {
+    // If Anthropic returned a non-OK status, they emit JSON not SSE — surface it.
+    if (!upstream.ok || !upstream.body) {
+      let errText = "";
+      try { errText = await upstream.text(); } catch { /* noop */ }
+      res.statusCode = upstream.status || 502;
+      res.setHeader("content-type", "application/json");
+      res.setHeader("access-control-allow-origin", "*");
+      res.setHeader("cache-control", "no-store");
+      res.end(errText || JSON.stringify({ error: { type: "upstream_error", message: "no body" } }));
+      return;
+    }
+    res.statusCode = 200;
+    res.setHeader("content-type", "text/event-stream");
+    res.setHeader("cache-control", "no-store, no-transform");
+    res.setHeader("access-control-allow-origin", "*");
+    res.setHeader("x-accel-buffering", "no"); // disable proxy buffering
+    // Flush headers immediately so the browser starts reading the stream.
+    if (typeof res.flushHeaders === "function") res.flushHeaders();
+
+    try {
+      const reader = upstream.body.getReader();
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (value && value.length) res.write(Buffer.from(value));
+      }
+    } catch (e) {
+      // Client disconnect or upstream abort — nothing useful to send.
+      try { res.write(`event: error\ndata: ${JSON.stringify({ message: e instanceof Error ? e.message : "stream aborted" })}\n\n`); } catch { /* noop */ }
+    }
+    res.end();
+    return;
+  }
+
+  // ---- Non-streaming branch (unchanged) ----
   const text = await upstream.text();
   let payload = text;
   try {
