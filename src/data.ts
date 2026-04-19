@@ -155,6 +155,55 @@ export const FORMULAS: Formula[] = [
   { subject: "maths", chapter: "Inverse Trigonometric Functions", chapterNum: 2, name: "Complementary", formula: "sin\u207B\u00B9x + cos\u207B\u00B9x = \u03C0/2" },
   { subject: "maths", chapter: "Inverse Trigonometric Functions", chapterNum: 2, name: "tan\u207B\u00B9 addition", formula: "tan\u207B\u00B9x + tan\u207B\u00B9y = tan\u207B\u00B9((x+y)/(1-xy))" },
   { subject: "maths", chapter: "Inverse Trigonometric Functions", chapterNum: 2, name: "2tan\u207B\u00B9x", formula: "= sin\u207B\u00B9(2x/(1+x\u00B2)) = cos\u207B\u00B9((1-x\u00B2)/(1+x\u00B2))" },
+
+  // Physics Ch.3 — Current Electricity (Week 3)
+  { subject: "physics", chapter: "Current Electricity", chapterNum: 3, name: "Current", formula: "I = dQ/dt = nAev\u1D05", unit: "A" },
+  { subject: "physics", chapter: "Current Electricity", chapterNum: 3, name: "Drift Velocity", formula: "v\u1D05 = eE\u03C4/m", unit: "m/s" },
+  { subject: "physics", chapter: "Current Electricity", chapterNum: 3, name: "Ohm's Law", formula: "V = IR" },
+  { subject: "physics", chapter: "Current Electricity", chapterNum: 3, name: "Resistance", formula: "R = \u03C1L/A", unit: "\u03A9" },
+  { subject: "physics", chapter: "Current Electricity", chapterNum: 3, name: "Resistivity with T", formula: "\u03C1\u209C = \u03C1\u2080(1 + \u03B1\u0394T)" },
+  { subject: "physics", chapter: "Current Electricity", chapterNum: 3, name: "Series Combination", formula: "R_eq = R\u2081 + R\u2082 + ..." },
+  { subject: "physics", chapter: "Current Electricity", chapterNum: 3, name: "Parallel Combination", formula: "1/R_eq = 1/R\u2081 + 1/R\u2082 + ..." },
+  { subject: "physics", chapter: "Current Electricity", chapterNum: 3, name: "Two in Parallel", formula: "R_eq = R\u2081R\u2082/(R\u2081+R\u2082)" },
+  { subject: "physics", chapter: "Current Electricity", chapterNum: 3, name: "Terminal Voltage", formula: "V = \u03B5 - Ir", unit: "V" },
+  { subject: "physics", chapter: "Current Electricity", chapterNum: 3, name: "Cells in Series", formula: "\u03B5_eq = \u03B5\u2081+\u03B5\u2082, r_eq = r\u2081+r\u2082" },
+  { subject: "physics", chapter: "Current Electricity", chapterNum: 3, name: "Identical Cells in Parallel", formula: "\u03B5_eq = \u03B5, r_eq = r/n" },
+  { subject: "physics", chapter: "Current Electricity", chapterNum: 3, name: "Power", formula: "P = VI = I\u00B2R = V\u00B2/R", unit: "W" },
+  { subject: "physics", chapter: "Current Electricity", chapterNum: 3, name: "Joule Heating", formula: "U = Pt = I\u00B2Rt", unit: "J" },
+  { subject: "physics", chapter: "Current Electricity", chapterNum: 3, name: "Kirchhoff's 1st (KCL)", formula: "\u03A3I_in = \u03A3I_out (at a junction)" },
+  { subject: "physics", chapter: "Current Electricity", chapterNum: 3, name: "Kirchhoff's 2nd (KVL)", formula: "\u03A3\u03B5 = \u03A3IR (around a closed loop)" },
+  { subject: "physics", chapter: "Current Electricity", chapterNum: 3, name: "Wheatstone Balance", formula: "P/Q = R/S (I_G = 0)" },
+  { subject: "physics", chapter: "Current Electricity", chapterNum: 3, name: "Meter Bridge", formula: "R = S\u00B7l\u2081/(100-l\u2081)" },
+
+  // Chemistry Ch.3 — Chemical Kinetics (Week 3)
+  { subject: "chemistry", chapter: "Chemical Kinetics", chapterNum: 3, name: "Rate (general)", formula: "Rate = -(1/a)d[A]/dt = +(1/c)d[C]/dt", unit: "mol L\u207B\u00B9 s\u207B\u00B9" },
+  { subject: "chemistry", chapter: "Chemical Kinetics", chapterNum: 3, name: "Rate Law", formula: "Rate = k[A]^m[B]^n (m,n from experiment)" },
+  { subject: "chemistry", chapter: "Chemical Kinetics", chapterNum: 3, name: "Zero-Order Integrated", formula: "[A]\u209C = [A]\u2080 - kt" },
+  { subject: "chemistry", chapter: "Chemical Kinetics", chapterNum: 3, name: "Zero-Order Half-life", formula: "t\u00BD = [A]\u2080/(2k)" },
+  { subject: "chemistry", chapter: "Chemical Kinetics", chapterNum: 3, name: "First-Order (ln)", formula: "ln([A]\u2080/[A]\u209C) = kt" },
+  { subject: "chemistry", chapter: "Chemical Kinetics", chapterNum: 3, name: "First-Order (NCERT log)", formula: "k = (2.303/t) log([A]\u2080/[A]\u209C)" },
+  { subject: "chemistry", chapter: "Chemical Kinetics", chapterNum: 3, name: "First-Order Exponential", formula: "[A]\u209C = [A]\u2080 \u00B7 e^(-kt)" },
+  { subject: "chemistry", chapter: "Chemical Kinetics", chapterNum: 3, name: "First-Order Half-life", formula: "t\u00BD = 0.693/k (independent of [A]\u2080)" },
+  { subject: "chemistry", chapter: "Chemical Kinetics", chapterNum: 3, name: "Second-Order Integrated", formula: "1/[A]\u209C - 1/[A]\u2080 = kt" },
+  { subject: "chemistry", chapter: "Chemical Kinetics", chapterNum: 3, name: "Arrhenius", formula: "k = A\u00B7e^(-E\u2090/RT)" },
+  { subject: "chemistry", chapter: "Chemical Kinetics", chapterNum: 3, name: "Arrhenius (ln)", formula: "ln k = ln A - E\u2090/(RT)" },
+  { subject: "chemistry", chapter: "Chemical Kinetics", chapterNum: 3, name: "Two-Temp Arrhenius", formula: "ln(k\u2082/k\u2081) = (E\u2090/R)(1/T\u2081 - 1/T\u2082)" },
+
+  // Maths Ch.3 — Matrices (Week 3)
+  { subject: "maths", chapter: "Matrices", chapterNum: 3, name: "Order", formula: "m \u00D7 n (m rows, n columns)" },
+  { subject: "maths", chapter: "Matrices", chapterNum: 3, name: "Addition", formula: "(A+B)\u1D62\u2C7C = a\u1D62\u2C7C + b\u1D62\u2C7C (same order)" },
+  { subject: "maths", chapter: "Matrices", chapterNum: 3, name: "Scalar Multiplication", formula: "(kA)\u1D62\u2C7C = k\u00B7a\u1D62\u2C7C" },
+  { subject: "maths", chapter: "Matrices", chapterNum: 3, name: "Matrix Multiplication", formula: "(AB)\u1D62\u2C7C = \u03A3\u2096 a\u1D62\u2096\u00B7b\u2096\u2C7C" },
+  { subject: "maths", chapter: "Matrices", chapterNum: 3, name: "Size Rule", formula: "A(m\u00D7p) \u00B7 B(p\u00D7n) = C(m\u00D7n)" },
+  { subject: "maths", chapter: "Matrices", chapterNum: 3, name: "Transpose Self-Inverse", formula: "(A\u1D40)\u1D40 = A" },
+  { subject: "maths", chapter: "Matrices", chapterNum: 3, name: "Transpose of Sum", formula: "(A+B)\u1D40 = A\u1D40 + B\u1D40" },
+  { subject: "maths", chapter: "Matrices", chapterNum: 3, name: "Transpose of Product", formula: "(AB)\u1D40 = B\u1D40A\u1D40 (order REVERSES!)" },
+  { subject: "maths", chapter: "Matrices", chapterNum: 3, name: "Symmetric", formula: "A\u1D40 = A (a\u1D62\u2C7C = a\u2C7C\u1D62)" },
+  { subject: "maths", chapter: "Matrices", chapterNum: 3, name: "Skew-Symmetric", formula: "A\u1D40 = -A (diagonal = 0)" },
+  { subject: "maths", chapter: "Matrices", chapterNum: 3, name: "Identity Property", formula: "AI = IA = A" },
+  { subject: "maths", chapter: "Matrices", chapterNum: 3, name: "Inverse", formula: "AA\u207B\u00B9 = A\u207B\u00B9A = I (only if det(A) \u2260 0)" },
+  { subject: "maths", chapter: "Matrices", chapterNum: 3, name: "Inverse of Product", formula: "(AB)\u207B\u00B9 = B\u207B\u00B9A\u207B\u00B9 (order REVERSES!)" },
+  { subject: "maths", chapter: "Matrices", chapterNum: 3, name: "Symmetric+Skew Decomposition", formula: "A = \u00BD(A+A\u1D40) + \u00BD(A-A\u1D40)" },
 ];
 
 // ---- PYQ Priority Data ----
@@ -195,6 +244,24 @@ export const PYQ_PRIORITIES: PYQPriority[] = [
   { subject: "maths", chapter: "Inverse Trigonometric Functions", chapterNum: 2, topic: "Simplification Problems", yearsAppeared: "2020-2024", marks: "2-4", priority: "VERY HIGH" },
   { subject: "maths", chapter: "Inverse Trigonometric Functions", chapterNum: 2, topic: "Domain & Range", yearsAppeared: "2020,2022,2024", marks: "1-2", priority: "HIGH" },
   { subject: "maths", chapter: "Inverse Trigonometric Functions", chapterNum: 2, topic: "Addition Formulas", yearsAppeared: "2021-2023", marks: "2-3", priority: "HIGH" },
+  // Physics Ch.3
+  { subject: "physics", chapter: "Current Electricity", chapterNum: 3, topic: "Ohm's Law & Circuit Analysis", yearsAppeared: "2020-2024", marks: "2-5", priority: "VERY HIGH" },
+  { subject: "physics", chapter: "Current Electricity", chapterNum: 3, topic: "Kirchhoff's Laws & Wheatstone Bridge", yearsAppeared: "2020-2024", marks: "3-5", priority: "VERY HIGH" },
+  { subject: "physics", chapter: "Current Electricity", chapterNum: 3, topic: "EMF & Internal Resistance", yearsAppeared: "2021-2024", marks: "2-3", priority: "HIGH" },
+  { subject: "physics", chapter: "Current Electricity", chapterNum: 3, topic: "Drift Velocity Derivation", yearsAppeared: "2020,2022,2023", marks: "2-3", priority: "HIGH" },
+  { subject: "physics", chapter: "Current Electricity", chapterNum: 3, topic: "Power Dissipation", yearsAppeared: "2021,2023", marks: "2-3", priority: "MEDIUM" },
+  // Chemistry Ch.3
+  { subject: "chemistry", chapter: "Chemical Kinetics", chapterNum: 3, topic: "First-Order Integrated Rate Law", yearsAppeared: "2020-2024", marks: "3-5", priority: "VERY HIGH" },
+  { subject: "chemistry", chapter: "Chemical Kinetics", chapterNum: 3, topic: "Arrhenius & Activation Energy", yearsAppeared: "2020-2024", marks: "3-5", priority: "VERY HIGH" },
+  { subject: "chemistry", chapter: "Chemical Kinetics", chapterNum: 3, topic: "Order vs Molecularity", yearsAppeared: "2020-2023", marks: "2-3", priority: "HIGH" },
+  { subject: "chemistry", chapter: "Chemical Kinetics", chapterNum: 3, topic: "Half-life Calculations", yearsAppeared: "2021,2023,2024", marks: "2-3", priority: "HIGH" },
+  { subject: "chemistry", chapter: "Chemical Kinetics", chapterNum: 3, topic: "Effect of Catalyst & Temperature", yearsAppeared: "2020,2022", marks: "1-2", priority: "MEDIUM" },
+  // Maths Ch.3
+  { subject: "maths", chapter: "Matrices", chapterNum: 3, topic: "Matrix Multiplication & Operations", yearsAppeared: "2020-2024", marks: "1-3", priority: "VERY HIGH" },
+  { subject: "maths", chapter: "Matrices", chapterNum: 3, topic: "Symmetric + Skew-Symmetric Decomposition", yearsAppeared: "2020-2024", marks: "2-3", priority: "VERY HIGH" },
+  { subject: "maths", chapter: "Matrices", chapterNum: 3, topic: "Prove polynomial identity (A\u00B2-4A-5I=0 type)", yearsAppeared: "2021-2024", marks: "5", priority: "HIGH" },
+  { subject: "maths", chapter: "Matrices", chapterNum: 3, topic: "System of Equations via Matrix Inverse", yearsAppeared: "2020-2024", marks: "5", priority: "VERY HIGH" },
+  { subject: "maths", chapter: "Matrices", chapterNum: 3, topic: "Transpose Rules (AB)\u1D40 = B\u1D40A\u1D40", yearsAppeared: "2020-2023", marks: "1-2", priority: "HIGH" },
 ];
 
 // ---- Test Papers & Marking Rubrics ----
@@ -356,6 +423,78 @@ export const TEST_PAPERS: TestPaper[] = [
     { name: "Section D — Extended", marksPerQ: 5, questions: [
       { num: 11, marks: 5, topic: "Prove: tan⁻¹((√(1+x²)-1)/x) = ½tan⁻¹(x)", rubric: ["1 for substitution x=tanθ", "1 for simplifying secθ-1", "1 for converting to tan(θ/2)", "1 for applying tan⁻¹", "1 for final result"] },
       { num: 12, marks: 5, topic: "Prove: cos⁻¹(12/13) + sin⁻¹(3/5) = sin⁻¹(56/65), find cos of sum", rubric: ["1 for setting up angles", "1 for sin/cos values", "1 for addition formula", "1 for proving identity", "1 for cos of sum"] },
+    ]},
+  ]},
+  // Week 3 — Physics (Current Electricity)
+  { week: 3, subject: "physics", totalMarks: 30, duration: "1 hour", sections: [
+    { name: "Section A — MCQ", marksPerQ: 1, questions: [
+      { num: 1, marks: 1, topic: "SI unit of resistivity (Ω·m)", rubric: ["1 mark for correct option"] },
+      { num: 2, marks: 1, topic: "Order of magnitude of drift velocity (10⁻⁴ m/s)", rubric: ["1 mark for correct option"] },
+      { num: 3, marks: 1, topic: "Two 6Ω in parallel, then series with 2Ω → total R", rubric: ["1 mark for correct option"] },
+      { num: 4, marks: 1, topic: "Kirchhoff's Junction Rule — conservation law", rubric: ["1 mark for correct option"] },
+      { num: 5, marks: 1, topic: "Balanced Wheatstone bridge condition", rubric: ["1 mark for correct option"] },
+    ]},
+    { name: "Section B — Short Answer", marksPerQ: 2, questions: [
+      { num: 6, marks: 2, topic: "Define drift velocity; relation I = nAevᴅ", rubric: ["1 for definition", "1 for formula with terms explained"] },
+      { num: 7, marks: 2, topic: "State Ohm's Law; distinguish ohmic vs non-ohmic with examples", rubric: ["1 for statement", "1 for distinction with examples"] },
+      { num: 8, marks: 2, topic: "R for wire: L=2m, A=10⁻⁶ m², ρ=5×10⁻⁸ Ω·m", rubric: ["1 for formula R=ρL/A", "1 for answer 0.1 Ω with unit"] },
+    ]},
+    { name: "Section C — Long Answer", marksPerQ: 3, questions: [
+      { num: 9, marks: 3, topic: "Derive I = nAevᴅ from first principles", rubric: ["1 for total charge nALe", "1 for time L/vᴅ", "1 for final formula"] },
+      { num: 10, marks: 3, topic: "Two cells (2V, r=1Ω; 3V, r=2Ω) in series with 3Ω — find I", rubric: ["1 for EMF sum (5V)", "1 for total R (6Ω)", "1 for I = 5/6 A with unit"] },
+      { num: 13, marks: 3, topic: "State Kirchhoff's laws; find I through 5V cell (parallel 5V+10V, 3Ω ext)", rubric: ["1 for stating both laws", "1 for KVL/KCL equations", "1 for solving (I₁ = −10/7 A, reverse dir)"] },
+    ]},
+    { name: "Section D — Extended", marksPerQ: 5, questions: [
+      { num: 11, marks: 5, topic: "Derive Wheatstone bridge balance using Kirchhoff's laws", rubric: ["1 for diagram", "1 for I_G=0 setup", "1.5 for loop ABDA (I₁P=I₂R)", "1.5 for loop BCDB (I₁Q=I₂S)", "1 for P/Q=R/S"] },
+      { num: 12, marks: 5, topic: "12V battery (r=2Ω), parallel 6Ω‖3Ω — I, I per resistor, P in 3Ω", rubric: ["1 for parallel R = 2Ω", "1.5 for I from battery (3A)", "1 for V across parallel (6V)", "1 for I per resistor (1A, 2A)", "0.5 for P = 12W"] },
+    ]},
+  ]},
+  // Week 3 — Chemistry (Chemical Kinetics)
+  { week: 3, subject: "chemistry", totalMarks: 30, duration: "1 hour", sections: [
+    { name: "Section A — MCQ", marksPerQ: 1, questions: [
+      { num: 1, marks: 1, topic: "Unit of rate constant for first-order reaction (s⁻¹)", rubric: ["1 mark for correct option"] },
+      { num: 2, marks: 1, topic: "Half-life of first-order reaction (independent of [A]₀)", rubric: ["1 mark for correct option"] },
+      { num: 3, marks: 1, topic: "Catalyst changes — Eₐ / ΔH / equilibrium?", rubric: ["1 mark for correct option"] },
+      { num: 4, marks: 1, topic: "Rate doubles when [A] doubles → order w.r.t. A", rubric: ["1 mark for correct option"] },
+      { num: 5, marks: 1, topic: "Molecularity of elementary reaction — allowed values", rubric: ["1 mark for correct option"] },
+    ]},
+    { name: "Section B — Short Answer", marksPerQ: 2, questions: [
+      { num: 6, marks: 2, topic: "Order vs Molecularity — any two differences", rubric: ["1 per valid distinction (max 2)"] },
+      { num: 7, marks: 2, topic: "First-order: t½ = 10 min → rate constant k", rubric: ["1 for t½ = 0.693/k", "1 for k = 0.0693 min⁻¹"] },
+      { num: 8, marks: 2, topic: "Define activation energy; effect of catalyst", rubric: ["1 for Eₐ definition", "1 for catalyst lowers Eₐ via alternate path"] },
+    ]},
+    { name: "Section C — Long Answer", marksPerQ: 3, questions: [
+      { num: 9, marks: 3, topic: "Rate = k[A][B]; both doubled — factor increase (4×)", rubric: ["1 for original rate", "1 for new rate", "1 for factor + note on order vs stoichiometry"] },
+      { num: 10, marks: 3, topic: "Arrhenius: k₁=0.0025, k₂=0.005 at 300K, 310K — find Eₐ", rubric: ["1 for two-temp formula", "1 for substitution", "1 for Eₐ ≈ 53.6 kJ/mol"] },
+      { num: 13, marks: 3, topic: "First-order 40% complete in 50 min — find k and t for 80%", rubric: ["1 for k = (2.303/t) log([A]₀/[A]ₜ)", "1 for k = 0.0102 min⁻¹", "1 for t ≈ 158 min"] },
+    ]},
+    { name: "Section D — Extended", marksPerQ: 5, questions: [
+      { num: 11, marks: 5, topic: "Derive integrated rate equation for first-order; show t½ = 0.693/k", rubric: ["1 for -d[A]/dt = k[A]", "1.5 for ln([A]₀/[A]ₜ)=kt", "1.5 for t½ derivation", "1 for independence from [A]₀"] },
+      { num: 12, marks: 5, topic: "Arrhenius equation; plot ln k vs 1/T; find Eₐ from graph", rubric: ["1 for k=A·e^(-Eₐ/RT)", "1.5 for defining each term", "1.5 for ln k = ln A - Eₐ/(RT)", "1 for slope = -Eₐ/R on graph"] },
+    ]},
+  ]},
+  // Week 3 — Maths (Matrices)
+  { week: 3, subject: "maths", totalMarks: 30, duration: "1 hour", sections: [
+    { name: "Section A — MCQ", marksPerQ: 1, questions: [
+      { num: 1, marks: 1, topic: "Size of AB when A is 2×3, B is 3×4", rubric: ["1 mark for correct option (2×4)"] },
+      { num: 2, marks: 1, topic: "Condition for matrix A to be symmetric", rubric: ["1 mark for correct option (Aᵀ = A)"] },
+      { num: 3, marks: 1, topic: "Number of elements in a 3×4 matrix", rubric: ["1 mark for correct option (12)"] },
+      { num: 4, marks: 1, topic: "(AB)ᵀ for square A, B of same order", rubric: ["1 mark for correct option (BᵀAᵀ)"] },
+      { num: 5, marks: 1, topic: "Diagonal elements of a skew-symmetric matrix", rubric: ["1 mark for correct option (all 0)"] },
+    ]},
+    { name: "Section B — Short Answer", marksPerQ: 2, questions: [
+      { num: 6, marks: 2, topic: "A=[[2,3],[-1,4]], B=[[1,0],[2,-1]] — find 2A − 3B", rubric: ["1 for 2A and 3B", "1 for 2A − 3B = [[1,6],[-8,11]]"] },
+      { num: 7, marks: 2, topic: "A=[[1,2],[3,4]], B=[[2,0],[1,2]] — find AB; is AB = BA?", rubric: ["1 for AB = [[4,4],[10,8]]", "1 for BA and AB ≠ BA conclusion"] },
+      { num: 8, marks: 2, topic: "A=[[1,2,3],[4,5,6]] — find Aᵀ; verify (Aᵀ)ᵀ = A", rubric: ["1 for Aᵀ (3×2)", "1 for verification"] },
+    ]},
+    { name: "Section C — Long Answer", marksPerQ: 3, questions: [
+      { num: 9, marks: 3, topic: "Decompose A=[[3,-2],[4,5]] into symmetric + skew-symmetric", rubric: ["1 for decomposition formula", "1 for P = [[3,1],[1,5]]", "1 for Q = [[0,-3],[3,0]] + verification"] },
+      { num: 10, marks: 3, topic: "A=[[0,1],[-1,0]] — find A², A³, A⁴; pattern", rubric: ["1 for A² = -I", "1 for A³ = -A, A⁴ = I", "1 for period-4 pattern (like powers of i)"] },
+      { num: 13, marks: 3, topic: "Find x making A = [[3,x,1],[2,1,4],[1,2,5]] singular", rubric: ["1 for det(A) expansion", "1 for simplification to −6−6x", "1 for x = −1"] },
+    ]},
+    { name: "Section D — Extended", marksPerQ: 5, questions: [
+      { num: 11, marks: 5, topic: "A=[[1,2,2],[2,1,2],[2,2,1]] — prove A² − 4A − 5I = 0", rubric: ["2 for A² = [[9,8,8],[8,9,8],[8,8,9]]", "1 for 4A", "0.5 for 5I", "1.5 for element-wise A²−4A−5I = 0"] },
+      { num: 12, marks: 5, topic: "A=[[1,-1,0],[2,3,4],[0,1,2]], B=[[2,2,-4],[-4,2,-4],[2,-1,5]] — AB; solve system", rubric: ["2 for AB = 6I ⇒ A⁻¹ = B/6", "1 for matrix form AX = C", "2 for X = (1/6)BC = [2,−1,4]ᵀ"] },
     ]},
   ]},
 ];
