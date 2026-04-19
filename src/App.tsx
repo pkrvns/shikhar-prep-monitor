@@ -2876,7 +2876,7 @@ export default function App() {
       flash("Evaluation saved", 880);
     };
 
-    if (!paper) return <EmptyState icon={"\uD83D\uDCDD"} title="No test paper" subtitle="Test papers available for Weeks 1, 2 & 3" />;
+    if (!paper) return <EmptyState icon={"\uD83D\uDCDD"} title="No test paper" subtitle="Test papers available for Weeks 1–4" />;
 
     return (
       <div className="space-y-4 animate-fade-in-up">
@@ -2892,7 +2892,7 @@ export default function App() {
           <div>
             <p className="text-[16px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Week</p>
             <div className="flex gap-1.5">
-              {[1, 2, 3].map(w => (
+              {[1, 2, 3, 4].map(w => (
                 <button key={w} onClick={() => { setSelWeek(w); setScores({}); setSaved(false); }}
                   className={`flex-1 text-[16px] py-2 rounded-xl font-semibold transition-all active:scale-95 ${selWeek === w ? "bg-brand-600 text-white" : "bg-gray-50 text-gray-500"}`}>
                   Week {w}

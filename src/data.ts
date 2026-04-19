@@ -204,6 +204,61 @@ export const FORMULAS: Formula[] = [
   { subject: "maths", chapter: "Matrices", chapterNum: 3, name: "Inverse", formula: "AA\u207B\u00B9 = A\u207B\u00B9A = I (only if det(A) \u2260 0)" },
   { subject: "maths", chapter: "Matrices", chapterNum: 3, name: "Inverse of Product", formula: "(AB)\u207B\u00B9 = B\u207B\u00B9A\u207B\u00B9 (order REVERSES!)" },
   { subject: "maths", chapter: "Matrices", chapterNum: 3, name: "Symmetric+Skew Decomposition", formula: "A = \u00BD(A+A\u1D40) + \u00BD(A-A\u1D40)" },
+
+  // Physics Ch.4 — Moving Charges & Magnetism (Week 4)
+  { subject: "physics", chapter: "Moving Charges and Magnetism", chapterNum: 4, name: "Lorentz Force", formula: "F = q(v \u00D7 B); |F| = qvB sin\u03B8", unit: "N" },
+  { subject: "physics", chapter: "Moving Charges and Magnetism", chapterNum: 4, name: "Radius (circular motion)", formula: "r = mv/(qB)", unit: "m" },
+  { subject: "physics", chapter: "Moving Charges and Magnetism", chapterNum: 4, name: "Time Period", formula: "T = 2\u03C0m/(qB) (independent of v)", unit: "s" },
+  { subject: "physics", chapter: "Moving Charges and Magnetism", chapterNum: 4, name: "Cyclotron Frequency", formula: "f = qB/(2\u03C0m)", unit: "Hz" },
+  { subject: "physics", chapter: "Moving Charges and Magnetism", chapterNum: 4, name: "Biot-Savart Law", formula: "dB = (\u03BC\u2080/4\u03C0) \u00B7 (I\u00A0dl sin\u03B8)/r\u00B2" },
+  { subject: "physics", chapter: "Moving Charges and Magnetism", chapterNum: 4, name: "Straight Wire", formula: "B = \u03BC\u2080I/(2\u03C0a)", unit: "T" },
+  { subject: "physics", chapter: "Moving Charges and Magnetism", chapterNum: 4, name: "Circular Loop (centre)", formula: "B = \u03BC\u2080I/(2R)", unit: "T" },
+  { subject: "physics", chapter: "Moving Charges and Magnetism", chapterNum: 4, name: "Circular Loop (axis)", formula: "B = \u03BC\u2080IR\u00B2/[2(R\u00B2+x\u00B2)^(3/2)]" },
+  { subject: "physics", chapter: "Moving Charges and Magnetism", chapterNum: 4, name: "Solenoid (inside)", formula: "B = \u03BC\u2080nI (n = turns per unit length)", unit: "T" },
+  { subject: "physics", chapter: "Moving Charges and Magnetism", chapterNum: 4, name: "Toroid", formula: "B = \u03BC\u2080NI/(2\u03C0r)", unit: "T" },
+  { subject: "physics", chapter: "Moving Charges and Magnetism", chapterNum: 4, name: "Ampere's Circuital Law", formula: "\u222EB\u00B7dl = \u03BC\u2080 I_enc" },
+  { subject: "physics", chapter: "Moving Charges and Magnetism", chapterNum: 4, name: "Force on Wire", formula: "F = I(L \u00D7 B); |F| = BIL sin\u03B8", unit: "N" },
+  { subject: "physics", chapter: "Moving Charges and Magnetism", chapterNum: 4, name: "Parallel Wires Force", formula: "F/L = \u03BC\u2080I\u2081I\u2082/(2\u03C0d) (same dir attract)", unit: "N/m" },
+  { subject: "physics", chapter: "Moving Charges and Magnetism", chapterNum: 4, name: "Magnetic Moment", formula: "m = NIA", unit: "A\u00B7m\u00B2" },
+  { subject: "physics", chapter: "Moving Charges and Magnetism", chapterNum: 4, name: "Torque on Coil", formula: "\u03C4 = NIAB sin\u03B8 = m \u00D7 B", unit: "N\u00B7m" },
+  { subject: "physics", chapter: "Moving Charges and Magnetism", chapterNum: 4, name: "Galvanometer \u2192 Ammeter", formula: "R_s = GI_g/(I - I_g) (shunt, parallel)" },
+  { subject: "physics", chapter: "Moving Charges and Magnetism", chapterNum: 4, name: "Galvanometer \u2192 Voltmeter", formula: "R = V/I_g - G (series, high R)" },
+  { subject: "physics", chapter: "Moving Charges and Magnetism", chapterNum: 4, name: "\u03BC\u2080 (permeability of free space)", formula: "\u03BC\u2080 = 4\u03C0 \u00D7 10\u207B\u2077", unit: "T\u00B7m/A" },
+
+  // Chemistry Ch.4 — d- and f-Block Elements (Week 4)
+  { subject: "chemistry", chapter: "d- and f-Block Elements", chapterNum: 4, name: "Spin-only Magnetic Moment", formula: "\u03BC = \u221A(n(n+2)) BM (n = unpaired e\u207B)" },
+  { subject: "chemistry", chapter: "d- and f-Block Elements", chapterNum: 4, name: "Cr Configuration (exception)", formula: "Cr (Z=24): [Ar] 3d\u2075 4s\u00B9 (half-filled stable)" },
+  { subject: "chemistry", chapter: "d- and f-Block Elements", chapterNum: 4, name: "Cu Configuration (exception)", formula: "Cu (Z=29): [Ar] 3d\u00B9\u2070 4s\u00B9 (fully-filled stable)" },
+  { subject: "chemistry", chapter: "d- and f-Block Elements", chapterNum: 4, name: "MnO\u2084\u207B Acidic Medium", formula: "MnO\u2084\u207B + 8H\u207A + 5e\u207B \u2192 Mn\u00B2\u207A + 4H\u2082O (E\u00B0=+1.52V)" },
+  { subject: "chemistry", chapter: "d- and f-Block Elements", chapterNum: 4, name: "MnO\u2084\u207B Neutral/Alkaline", formula: "MnO\u2084\u207B + 2H\u2082O + 3e\u207B \u2192 MnO\u2082 + 4OH\u207B (E\u00B0=+0.59V)" },
+  { subject: "chemistry", chapter: "d- and f-Block Elements", chapterNum: 4, name: "Cr\u2082O\u2087\u00B2\u207B Acidic Medium", formula: "Cr\u2082O\u2087\u00B2\u207B + 14H\u207A + 6e\u207B \u2192 2Cr\u00B3\u207A + 7H\u2082O (E\u00B0=+1.33V)" },
+  { subject: "chemistry", chapter: "d- and f-Block Elements", chapterNum: 4, name: "Chromate\u2194Dichromate", formula: "Cr\u2082O\u2087\u00B2\u207B + 2OH\u207B \u21CC 2CrO\u2084\u00B2\u207B + H\u2082O" },
+  { subject: "chemistry", chapter: "d- and f-Block Elements", chapterNum: 4, name: "KMnO\u2084 Prep Step 1", formula: "2MnO\u2082 + 4KOH + O\u2082 \u2192 2K\u2082MnO\u2084 + 2H\u2082O (green)" },
+  { subject: "chemistry", chapter: "d- and f-Block Elements", chapterNum: 4, name: "KMnO\u2084 Prep Step 2 (electrolytic)", formula: "2K\u2082MnO\u2084 + 2H\u2082O \u2192 2KMnO\u2084 + 2KOH + H\u2082" },
+  { subject: "chemistry", chapter: "d- and f-Block Elements", chapterNum: 4, name: "K\u2082Cr\u2082O\u2087 Prep Step 1", formula: "4FeCr\u2082O\u2084 + 8Na\u2082CO\u2083 + 7O\u2082 \u2192 8Na\u2082CrO\u2084 + 2Fe\u2082O\u2083 + 8CO\u2082" },
+  { subject: "chemistry", chapter: "d- and f-Block Elements", chapterNum: 4, name: "K\u2082Cr\u2082O\u2087 Prep Step 2", formula: "2Na\u2082CrO\u2084 + H\u2082SO\u2084 \u2192 Na\u2082Cr\u2082O\u2087 + Na\u2082SO\u2084 + H\u2082O" },
+  { subject: "chemistry", chapter: "d- and f-Block Elements", chapterNum: 4, name: "Lanthanide Contraction", formula: "Gradual \u2193 in M\u00B3\u207A radius Ce\u2192Lu (poor 4f shielding)" },
+  { subject: "chemistry", chapter: "d- and f-Block Elements", chapterNum: 4, name: "Lanthanide Contraction Consequence", formula: "Zr \u2248 Hf radius; basic strength of Ln(OH)\u2083 decreases" },
+
+  // Maths Ch.4 — Determinants (Week 4)
+  { subject: "maths", chapter: "Determinants", chapterNum: 4, name: "2\u00D72 Determinant", formula: "|[[a,b],[c,d]]| = ad - bc" },
+  { subject: "maths", chapter: "Determinants", chapterNum: 4, name: "3\u00D73 Expansion (Row 1)", formula: "|A| = a\u2081\u2081M\u2081\u2081 - a\u2081\u2082M\u2081\u2082 + a\u2081\u2083M\u2081\u2083" },
+  { subject: "maths", chapter: "Determinants", chapterNum: 4, name: "Minor", formula: "M\u1D62\u2C7C = det of submatrix (delete row i, col j)" },
+  { subject: "maths", chapter: "Determinants", chapterNum: 4, name: "Cofactor", formula: "C\u1D62\u2C7C = (-1)^(i+j) \u00B7 M\u1D62\u2C7C" },
+  { subject: "maths", chapter: "Determinants", chapterNum: 4, name: "Adjoint", formula: "adj(A) = (cofactor matrix)\u1D40" },
+  { subject: "maths", chapter: "Determinants", chapterNum: 4, name: "Key Identity", formula: "A \u00B7 adj(A) = adj(A) \u00B7 A = |A| \u00B7 I" },
+  { subject: "maths", chapter: "Determinants", chapterNum: 4, name: "Inverse via Adjoint", formula: "A\u207B\u00B9 = adj(A)/|A| (requires |A| \u2260 0)" },
+  { subject: "maths", chapter: "Determinants", chapterNum: 4, name: "Determinant of Product", formula: "|AB| = |A| \u00B7 |B|" },
+  { subject: "maths", chapter: "Determinants", chapterNum: 4, name: "Scalar Multiplication", formula: "|kA| = k\u207F \u00B7 |A| (n\u00D7n)" },
+  { subject: "maths", chapter: "Determinants", chapterNum: 4, name: "Transpose", formula: "|A\u1D40| = |A|" },
+  { subject: "maths", chapter: "Determinants", chapterNum: 4, name: "Inverse", formula: "|A\u207B\u00B9| = 1/|A|" },
+  { subject: "maths", chapter: "Determinants", chapterNum: 4, name: "Determinant of Adjoint", formula: "|adj(A)| = |A|^(n-1)  (|A|\u00B2 for 3\u00D73)" },
+  { subject: "maths", chapter: "Determinants", chapterNum: 4, name: "Area of Triangle", formula: "Area = \u00BD |det([[x\u2081,y\u2081,1],[x\u2082,y\u2082,1],[x\u2083,y\u2083,1]])|" },
+  { subject: "maths", chapter: "Determinants", chapterNum: 4, name: "Collinearity", formula: "3 points collinear \u21D4 det([[x\u1D62,y\u1D62,1]\u2093\u2083]) = 0" },
+  { subject: "maths", chapter: "Determinants", chapterNum: 4, name: "Cramer's Rule", formula: "x\u1D62 = |A\u1D62|/|A| (A\u1D62: replace col i with B)" },
+  { subject: "maths", chapter: "Determinants", chapterNum: 4, name: "Property: Swap rows", formula: "|A| \u2192 -|A|" },
+  { subject: "maths", chapter: "Determinants", chapterNum: 4, name: "Property: Identical rows", formula: "|A| = 0" },
+  { subject: "maths", chapter: "Determinants", chapterNum: 4, name: "Property: R\u1D62 \u2192 R\u1D62 + kR\u2C7C", formula: "|A| UNCHANGED (most useful!)" },
 ];
 
 // ---- PYQ Priority Data ----
@@ -262,6 +317,24 @@ export const PYQ_PRIORITIES: PYQPriority[] = [
   { subject: "maths", chapter: "Matrices", chapterNum: 3, topic: "Prove polynomial identity (A\u00B2-4A-5I=0 type)", yearsAppeared: "2021-2024", marks: "5", priority: "HIGH" },
   { subject: "maths", chapter: "Matrices", chapterNum: 3, topic: "System of Equations via Matrix Inverse", yearsAppeared: "2020-2024", marks: "5", priority: "VERY HIGH" },
   { subject: "maths", chapter: "Matrices", chapterNum: 3, topic: "Transpose Rules (AB)\u1D40 = B\u1D40A\u1D40", yearsAppeared: "2020-2023", marks: "1-2", priority: "HIGH" },
+  // Physics Ch.4
+  { subject: "physics", chapter: "Moving Charges and Magnetism", chapterNum: 4, topic: "Biot-Savart & Field from Loop/Solenoid", yearsAppeared: "2020-2024", marks: "3-5", priority: "VERY HIGH" },
+  { subject: "physics", chapter: "Moving Charges and Magnetism", chapterNum: 4, topic: "Ampere's Circuital Law & Solenoid", yearsAppeared: "2020-2024", marks: "5", priority: "VERY HIGH" },
+  { subject: "physics", chapter: "Moving Charges and Magnetism", chapterNum: 4, topic: "Force on Parallel Wires", yearsAppeared: "2021-2024", marks: "2-3", priority: "HIGH" },
+  { subject: "physics", chapter: "Moving Charges and Magnetism", chapterNum: 4, topic: "Cyclotron / Circular motion r=mv/qB", yearsAppeared: "2020-2023", marks: "2-5", priority: "HIGH" },
+  { subject: "physics", chapter: "Moving Charges and Magnetism", chapterNum: 4, topic: "Galvanometer \u2192 Ammeter/Voltmeter", yearsAppeared: "2021,2023", marks: "2-3", priority: "MEDIUM" },
+  // Chemistry Ch.4
+  { subject: "chemistry", chapter: "d- and f-Block Elements", chapterNum: 4, topic: "KMnO\u2084 & K\u2082Cr\u2082O\u2087 Preparation + Oxidation", yearsAppeared: "2020-2024", marks: "3-5", priority: "VERY HIGH" },
+  { subject: "chemistry", chapter: "d- and f-Block Elements", chapterNum: 4, topic: "Lanthanide Contraction + Consequences", yearsAppeared: "2020-2024", marks: "2-3", priority: "VERY HIGH" },
+  { subject: "chemistry", chapter: "d- and f-Block Elements", chapterNum: 4, topic: "Magnetic Moment (spin-only)", yearsAppeared: "2020-2023", marks: "2-3", priority: "HIGH" },
+  { subject: "chemistry", chapter: "d- and f-Block Elements", chapterNum: 4, topic: "Variable Oxidation States & Exceptions", yearsAppeared: "2021-2024", marks: "2-3", priority: "HIGH" },
+  { subject: "chemistry", chapter: "d- and f-Block Elements", chapterNum: 4, topic: "Colour + Catalysis + Complex formation", yearsAppeared: "2020,2022", marks: "1-3", priority: "MEDIUM" },
+  // Maths Ch.4
+  { subject: "maths", chapter: "Determinants", chapterNum: 4, topic: "Properties + Prove Identity", yearsAppeared: "2020-2024", marks: "5", priority: "VERY HIGH" },
+  { subject: "maths", chapter: "Determinants", chapterNum: 4, topic: "Find A\u207B\u00B9 via Adjoint", yearsAppeared: "2020-2024", marks: "5", priority: "VERY HIGH" },
+  { subject: "maths", chapter: "Determinants", chapterNum: 4, topic: "Cramer's Rule / System of Equations", yearsAppeared: "2021-2024", marks: "3-5", priority: "HIGH" },
+  { subject: "maths", chapter: "Determinants", chapterNum: 4, topic: "Area of Triangle / Collinearity", yearsAppeared: "2020-2023", marks: "2-3", priority: "HIGH" },
+  { subject: "maths", chapter: "Determinants", chapterNum: 4, topic: "Compute |kA|, |adj A|, |AB|", yearsAppeared: "2020-2024", marks: "1-2", priority: "HIGH" },
 ];
 
 // ---- Test Papers & Marking Rubrics ----
@@ -495,6 +568,78 @@ export const TEST_PAPERS: TestPaper[] = [
     { name: "Section D — Extended", marksPerQ: 5, questions: [
       { num: 11, marks: 5, topic: "A=[[1,2,2],[2,1,2],[2,2,1]] — prove A² − 4A − 5I = 0", rubric: ["2 for A² = [[9,8,8],[8,9,8],[8,8,9]]", "1 for 4A", "0.5 for 5I", "1.5 for element-wise A²−4A−5I = 0"] },
       { num: 12, marks: 5, topic: "A=[[1,-1,0],[2,3,4],[0,1,2]], B=[[2,2,-4],[-4,2,-4],[2,-1,5]] — AB; solve system", rubric: ["2 for AB = 6I ⇒ A⁻¹ = B/6", "1 for matrix form AX = C", "2 for X = (1/6)BC = [2,−1,4]ᵀ"] },
+    ]},
+  ]},
+  // Week 4 — Physics (Moving Charges & Magnetism)
+  { week: 4, subject: "physics", totalMarks: 30, duration: "1 hour", sections: [
+    { name: "Section A — MCQ", marksPerQ: 1, questions: [
+      { num: 1, marks: 1, topic: "Force on charge moving parallel to B (zero)", rubric: ["1 mark for correct option"] },
+      { num: 2, marks: 1, topic: "SI unit of magnetic field (Tesla)", rubric: ["1 mark for correct option"] },
+      { num: 3, marks: 1, topic: "Period of circular motion in B — speed dependence", rubric: ["1 mark for correct option"] },
+      { num: 4, marks: 1, topic: "Parallel wires with same-direction currents — force?", rubric: ["1 mark for correct option"] },
+      { num: 5, marks: 1, topic: "B inside long solenoid formula", rubric: ["1 mark for correct option"] },
+    ]},
+    { name: "Section B — Short Answer", marksPerQ: 2, questions: [
+      { num: 6, marks: 2, topic: "Proton at 10⁶ m/s ⊥ to B=0.5 T — find F", rubric: ["1 for F = qvB formula", "1 for F = 8×10⁻¹⁴ N with unit"] },
+      { num: 7, marks: 2, topic: "State Biot-Savart Law; expression + direction of dB", rubric: ["1 for statement", "1 for expression + right-hand rule direction"] },
+      { num: 8, marks: 2, topic: "Convert galvanometer (G=100Ω, Iₘ=1mA) to voltmeter (10V)", rubric: ["1 for R in series + V = Iₘ(G+R)", "1 for R = 9900 Ω"] },
+    ]},
+    { name: "Section C — Long Answer", marksPerQ: 3, questions: [
+      { num: 9, marks: 3, topic: "Derive B at centre of circular current loop using Biot-Savart", rubric: ["1 for setup (θ=90°, r=R)", "1 for dB expression", "1 for integration → B = μ₀I/(2R)"] },
+      { num: 10, marks: 3, topic: "Parallel wires: I₁=5A, I₂=10A (same dir), d=10 cm — F/L and direction", rubric: ["1 for formula F/L = μ₀I₁I₂/(2πd)", "1 for calculation → 10⁻⁴ N/m", "1 for attractive direction"] },
+      { num: 13, marks: 3, topic: "Proton vs α (same KE) in ⊥ B — compare r and T", rubric: ["1 for r = √(2m·KE)/(qB) → rₐ/rₚ = 1", "1 for T = 2πm/(qB) → Tₐ/Tₚ = 2", "1 for final comparison"] },
+    ]},
+    { name: "Section D — Extended", marksPerQ: 5, questions: [
+      { num: 11, marks: 5, topic: "State Ampere's Law; derive B inside long solenoid; draw Amperian loop", rubric: ["1 for law statement", "1.5 for Amperian loop diagram", "1.5 for side-wise contributions", "1 for B = μ₀nI"] },
+      { num: 12, marks: 5, topic: "Coil (N=100, A=50 cm², I=0.5A) in B=0.2T — τ_max, τ at 30°, m", rubric: ["1 for data setup (SI units)", "1.5 for τ_max = 0.05 N·m", "2 for τ(30°) = 0.0433 N·m (normal at 60°)", "0.5 for m = NIA = 0.25 A·m²"] },
+    ]},
+  ]},
+  // Week 4 — Chemistry (d- and f-Block Elements)
+  { week: 4, subject: "chemistry", totalMarks: 30, duration: "1 hour", sections: [
+    { name: "Section A — MCQ", marksPerQ: 1, questions: [
+      { num: 1, marks: 1, topic: "Electronic config of Cr (Z=24) — [Ar] 3d⁵ 4s¹", rubric: ["1 mark for correct option"] },
+      { num: 2, marks: 1, topic: "Transition metal with no variable OS (Zn)", rubric: ["1 mark for correct option"] },
+      { num: 3, marks: 1, topic: "Colour of acidic KMnO₄ (purple)", rubric: ["1 mark for correct option"] },
+      { num: 4, marks: 1, topic: "Diamagnetic ion — Fe²⁺/Cu²⁺/Zn²⁺/Mn²⁺", rubric: ["1 mark for correct option"] },
+      { num: 5, marks: 1, topic: "Cause of lanthanide contraction (poor 4f shielding)", rubric: ["1 mark for correct option"] },
+    ]},
+    { name: "Section B — Short Answer", marksPerQ: 2, questions: [
+      { num: 6, marks: 2, topic: "Why Zn is not a true transition metal", rubric: ["1 for definition (partially filled d)", "1 for Zn [Ar]3d¹⁰ in atom and ion"] },
+      { num: 7, marks: 2, topic: "Magnetic moment of Fe³⁺ using μ = √(n(n+2)) BM", rubric: ["1 for Fe³⁺ = [Ar]3d⁵, n=5", "1 for μ = 5.92 BM"] },
+      { num: 8, marks: 2, topic: "Why Cu shows +1 & +2 but Zn only +2", rubric: ["1 for Cu explanation (3d¹⁰ vs 3d⁹ stability)", "1 for Zn explanation (3d¹⁰ in Zn²⁺)"] },
+    ]},
+    { name: "Section C — Long Answer", marksPerQ: 3, questions: [
+      { num: 9, marks: 3, topic: "Lanthanide contraction — definition + two consequences", rubric: ["1 for definition (r↓ across Ln series)", "1 for Zr ≈ Hf radius (d-block similarity)", "1 for basic-strength decrease of Ln(OH)₃"] },
+      { num: 10, marks: 3, topic: "Balanced ionic eqn: acidified KMnO₄ + Fe²⁺; colour change", rubric: ["1 for half-reactions", "1 for balanced MnO₄⁻ + 8H⁺ + 5Fe²⁺ → Mn²⁺ + 4H₂O + 5Fe³⁺", "1 for colour change (purple → colourless)"] },
+      { num: 13, marks: 3, topic: "Why TM show: catalysis / colour / paramagnetism + example each", rubric: ["1 for catalysis (variable OS; Fe in Haber)", "1 for colour (d-d transitions; Cu²⁺ blue)", "1 for paramagnetism (unpaired d e⁻; Fe³⁺)"] },
+    ]},
+    { name: "Section D — Extended", marksPerQ: 5, questions: [
+      { num: 11, marks: 5, topic: "KMnO₄ prep from pyrolusite (2 steps); oxidising action acidic vs neutral/alkaline", rubric: ["1 for Step 1 (MnO₂ + KOH + O₂ → K₂MnO₄)", "1 for Step 2 (electrolytic → KMnO₄)", "1.5 for acidic half-reaction (5e⁻)", "1.5 for neutral/alkaline half-reaction (3e⁻)"] },
+      { num: 12, marks: 5, topic: "K₂Cr₂O₇ from chromite (steps + eqns); oxidising action acidic; chromate⇌dichromate", rubric: ["2.5 for 3-step prep (chromate → dichromate → K₂Cr₂O₇)", "1.5 for Cr₂O₇²⁻ + 14H⁺ + 6e⁻ → 2Cr³⁺ + 7H₂O (+ Fe²⁺ example)", "1 for pH-based interconversion"] },
+    ]},
+  ]},
+  // Week 4 — Maths (Determinants)
+  { week: 4, subject: "maths", totalMarks: 30, duration: "1 hour", sections: [
+    { name: "Section A — MCQ", marksPerQ: 1, questions: [
+      { num: 1, marks: 1, topic: "|2A| for 3×3 with |A|=5 (→ 40)", rubric: ["1 mark for correct option"] },
+      { num: 2, marks: 1, topic: "A · adj(A) = ? (|A|·I)", rubric: ["1 mark for correct option"] },
+      { num: 3, marks: 1, topic: "Area of triangle from 3 collinear points (0)", rubric: ["1 mark for correct option"] },
+      { num: 4, marks: 1, topic: "|adj(A)| for 3×3 (|A|²)", rubric: ["1 mark for correct option"] },
+      { num: 5, marks: 1, topic: "|AB| rule (|A|·|B|)", rubric: ["1 mark for correct option"] },
+    ]},
+    { name: "Section B — Short Answer", marksPerQ: 2, questions: [
+      { num: 6, marks: 2, topic: "Evaluate |[[1,2,3],[4,5,6],[7,8,9]]|", rubric: ["1 for expansion", "1 for answer 0 (rows linearly dependent)"] },
+      { num: 7, marks: 2, topic: "Find x given |[[2,4],[x,3]]| = -2", rubric: ["1 for 6 - 4x = -2", "1 for x = 2"] },
+      { num: 8, marks: 2, topic: "Check collinearity of (1,2), (3,8), (5,14) via determinant", rubric: ["1 for determinant setup", "1 for det = 0 → collinear"] },
+    ]},
+    { name: "Section C — Long Answer", marksPerQ: 3, questions: [
+      { num: 9, marks: 3, topic: "A=[[2,3],[1,-4]] — find adj(A); verify A·adj(A) = |A|·I", rubric: ["1 for |A| = -11", "1 for adj(A) = [[-4,-3],[-1,2]]", "1 for A·adj(A) = -11·I"] },
+      { num: 10, marks: 3, topic: "Solve 2x+y=7, 3x-2y=0 using Cramer's Rule", rubric: ["1 for |A| = -7", "1 for x = 2", "1 for y = 3"] },
+      { num: 13, marks: 3, topic: "Area of triangle with vertices (3,8), (-4,2), (5,1)", rubric: ["1 for area formula", "1 for det = 61", "1 for area = 30.5 sq units"] },
+    ]},
+    { name: "Section D — Extended", marksPerQ: 5, questions: [
+      { num: 11, marks: 5, topic: "A=[[1,2,3],[2,3,2],[3,3,4]] — find A⁻¹ via adjoint; verify A·A⁻¹ = I", rubric: ["1 for |A| = -7", "2 for 9 cofactors", "0.5 for cofactor matrix", "0.5 for adj(A) = Cᵀ", "0.5 for A⁻¹ = adj/|A|", "0.5 for verification"] },
+      { num: 12, marks: 5, topic: "Prove |[[a,b,c],[a²,b²,c²],[bc,ca,ab]]| = (a-b)(b-c)(c-a)(ab+bc+ca)", rubric: ["1.5 for C₁→C₁-C₂, C₂→C₂-C₃", "1.5 for factoring (a-b), (b-c)", "1 for C₁→C₁-C₂ again", "1 for expand + simplify to RHS"] },
     ]},
   ]},
 ];
